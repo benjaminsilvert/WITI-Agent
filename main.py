@@ -1,5 +1,7 @@
 """WITI minimal v1 loop: one Messages API call, one tool (fetch_url), prints a digest."""
 
+import datetime
+import json
 import os
 import re
 import sys
@@ -18,6 +20,7 @@ MAX_TOKENS = 1024
 FETCH_TIMEOUT_SECONDS = 10
 FETCH_CHAR_CAP = 5000
 NOTES_DIR = "notes"
+MEMORY_PATH = "memory.json"
 
 # On-topic default: ties straight into the vuln catalog this project is building toward.
 DEFAULT_URL = "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
@@ -44,6 +47,24 @@ SEARCH_NOTES_TOOL = {
             "query": {"type": "string", "description": "Keyword or phrase to search for."},
         },
         "required": ["query"],
+    },
+}
+
+READ_MEMORY_TOOL = {
+    "name": "read_memory",
+    "description": "Read everything currently stored in persistent memory.",
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+APPEND_MEMORY_TOOL = {
+    "name": "append_memory",
+    "description": "Append a note to persistent memory so it's recalled in future runs.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "The text to remember."},
+        },
+        "required": ["content"],
     },
 }
 
@@ -82,11 +103,39 @@ def search_notes(query: str) -> str:
     return "\n\n".join(matches)
 
 
+def read_memory() -> str:
+    if not os.path.exists(MEMORY_PATH):
+        return "[]"
+    return open(MEMORY_PATH, encoding="utf-8").read()
+
+
+def append_memory(content: str) -> str:
+    entries = []
+    if os.path.exists(MEMORY_PATH):
+        try:
+            entries = json.loads(open(MEMORY_PATH, encoding="utf-8").read())
+        except json.JSONDecodeError:
+            entries = []
+
+    entries.append(
+        {"content": content, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    )
+
+    with open(MEMORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2)
+
+    return f"Stored to memory ({len(entries)} entries total)."
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
     if name == "search_notes":
         return search_notes(tool_input["query"])
+    if name == "read_memory":
+        return read_memory()
+    if name == "append_memory":
+        return append_memory(tool_input["content"])
     return f"Unknown tool: {name}"
 
 
@@ -121,7 +170,7 @@ def main():
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=system_prompt,
-            tools=[FETCH_URL_TOOL, SEARCH_NOTES_TOOL],
+            tools=[FETCH_URL_TOOL, SEARCH_NOTES_TOOL, READ_MEMORY_TOOL, APPEND_MEMORY_TOOL],
             messages=messages,
         )
         messages.append({"role": "assistant", "content": response.content})
