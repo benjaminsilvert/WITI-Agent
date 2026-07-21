@@ -17,9 +17,11 @@ MODEL = "claude-sonnet-5"
 MAX_TOKENS = 1024
 FETCH_TIMEOUT_SECONDS = 10
 FETCH_CHAR_CAP = 5000
+NOTES_DIR = "notes"
 
 # On-topic default: ties straight into the vuln catalog this project is building toward.
 DEFAULT_URL = "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
+DEFAULT_REQUEST = "Give me a shareable digest of what's in my notes about IDOR."
 
 FETCH_URL_TOOL = {
     "name": "fetch_url",
@@ -30,6 +32,18 @@ FETCH_URL_TOOL = {
             "url": {"type": "string", "description": "The URL to fetch."},
         },
         "required": ["url"],
+    },
+}
+
+SEARCH_NOTES_TOOL = {
+    "name": "search_notes",
+    "description": "Search the user's local notes (markdown files in notes/) for a keyword and return matching notes in full.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Keyword or phrase to search for."},
+        },
+        "required": ["query"],
     },
 }
 
@@ -49,9 +63,30 @@ def fetch_url(url: str) -> str:
     return text[:FETCH_CHAR_CAP]
 
 
+def search_notes(query: str) -> str:
+    if not os.path.isdir(NOTES_DIR):
+        return f"No '{NOTES_DIR}' directory found."
+
+    query_lower = query.lower()
+    matches = []
+    for name in sorted(os.listdir(NOTES_DIR)):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(NOTES_DIR, name)
+        text = open(path, encoding="utf-8").read()
+        if query_lower in name.lower() or query_lower in text.lower():
+            matches.append(f"--- {name} ---\n{text}")
+
+    if not matches:
+        return f"No notes matched '{query}'."
+    return "\n\n".join(matches)
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
+    if name == "search_notes":
+        return search_notes(tool_input["query"])
     return f"Unknown tool: {name}"
 
 
@@ -64,13 +99,19 @@ def main():
     client = Anthropic(api_key=api_key)
     system_prompt = open("prompts/system.md", encoding="utf-8").read()
 
-    url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
+    if len(sys.argv) == 2 and sys.argv[1].startswith(("http://", "https://")):
+        user_request = f"Fetch {sys.argv[1]} and summarize it"
+    elif len(sys.argv) > 1:
+        user_request = " ".join(sys.argv[1:])
+    else:
+        user_request = DEFAULT_REQUEST
+
     messages = [
         {
             "role": "user",
             "content": (
-                f"Fetch {url} and give me a short digest: 3-5 bullets, each with one "
-                "\"why it matters\" line, citing the source URL."
+                f"{user_request}. Give a short digest: 3-5 bullets, each with one "
+                "\"why it matters\" line, citing sources where relevant."
             ),
         }
     ]
@@ -80,7 +121,7 @@ def main():
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=system_prompt,
-            tools=[FETCH_URL_TOOL],
+            tools=[FETCH_URL_TOOL, SEARCH_NOTES_TOOL],
             messages=messages,
         )
         messages.append({"role": "assistant", "content": response.content})
