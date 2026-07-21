@@ -23,6 +23,7 @@ NOTES_DIR = "notes"
 MEMORY_PATH = "memory.json"
 TRACKER_PATH = "tracker.md"
 OUTBOX_PATH = "outbox.txt"
+INBOX_PATH = "inbox.json"
 
 # On-topic default: ties straight into the vuln catalog this project is building toward.
 DEFAULT_URL = "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
@@ -94,6 +95,12 @@ SEND_DIGEST_TOOL = {
         },
         "required": ["recipient", "subject", "body"],
     },
+}
+
+READ_INBOX_TOOL = {
+    "name": "read_inbox",
+    "description": "Read messages currently in the inbox. (v1: reads a local inbox.json instead of real Gmail.)",
+    "input_schema": {"type": "object", "properties": {}},
 }
 
 
@@ -168,6 +175,18 @@ def send_digest(recipient: str, subject: str, body: str) -> str:
     return f"Digest written to {OUTBOX_PATH} (to: {recipient})."
 
 
+def read_inbox() -> str:
+    if not os.path.exists(INBOX_PATH):
+        return "No messages."
+
+    messages = json.loads(open(INBOX_PATH, encoding="utf-8").read())
+    if not messages:
+        return "No messages."
+
+    parts = [f"From: {m['from']}\nSubject: {m['subject']}\n\n{m['body']}" for m in messages]
+    return "\n\n---\n\n".join(parts)
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
@@ -181,6 +200,8 @@ def run_tool(name: str, tool_input: dict) -> str:
         return update_tracker(tool_input["content"])
     if name == "send_digest":
         return send_digest(tool_input["recipient"], tool_input["subject"], tool_input["body"])
+    if name == "read_inbox":
+        return read_inbox()
     return f"Unknown tool: {name}"
 
 
@@ -222,6 +243,7 @@ def main():
                 APPEND_MEMORY_TOOL,
                 UPDATE_TRACKER_TOOL,
                 SEND_DIGEST_TOOL,
+                READ_INBOX_TOOL,
             ],
             messages=messages,
         )

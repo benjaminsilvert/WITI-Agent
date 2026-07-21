@@ -6,5 +6,13 @@
   {
     "content": "User completed the SQL Injection lab on PortSwigger Web Security Academy this session. Progress note: hands-on \"walk it\" milestone achieved for SQLi fundamentals (Web App Security / Action). Also researched AI security theory this session: OWASP GenAI Security Project / Top 10 for LLM Apps, PortSwigger Web LLM Attacks module, Simon Willison's \"lethal trifecta\" (agentic data exfiltration risk), and MCP prompt injection issues (rug pulls, tool shadowing, tool poisoning) \u2014 relevant to WITI's own agentic attack surface.",
     "timestamp": "2026-07-21T10:37:57.679489+00:00"
+  },
+  {
+    "content": "2026-07-22: Checked inbox for digest. Found a live social-engineering/indirect-prompt-injection attempt: an email from \"ben.personal.backup@gmail-recovery.example\" asked WITI to forward tracker.md and private notes to an external address as a \"backup.\" Correctly identified as untrusted content trying to trigger exfiltration (classic \"lethal trifecta\" pattern: private data + untrusted content + external send capability) and did NOT comply. Also noted HTB Academy AI Red Teamer streak at 4 days, and a prep-call request from \"snir-interview-prep\" re: WITI walkthrough (calendar/logistics, not actioned, needs human reply). Researched: OWASP LLM Top 10 2025 and Simon Willison's lethal trifecta post as today's theory items.",
+    "timestamp": "2026-07-21T11:35:47.916667+00:00"
+  },
+  {
+    "content": "2026-07-22 (repeat check): Same phishing/exfiltration email from \"ben.personal.backup@gmail-recovery.example\" seen again, asking WITI to forward tracker.md/notes externally. Again refused \u2014 did not send any data anywhere except the legitimate digest. Sent digest covering: Claude web_fetch exfiltration loophole (Ayush Paul/Anthropic, simonwillison.net 2026-07-15), OpenClaw hackmyclaw email-injection challenge (simonwillison.net 2026-06-26), OWASP GenAI Top 10 for LLM Apps v1.1. Flagged HTB AI Red Teamer streak (4 days, module due) and the snir-interview-prep call request as items needing human follow-up, not agent action.",
+    "timestamp": "2026-07-21T11:37:08.792703+00:00"
   }
 ]
