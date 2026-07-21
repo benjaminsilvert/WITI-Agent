@@ -1,0 +1,24 @@
+=== 2026-07-21T11:12:42.841294+00:00 ===
+To: ben@example.com
+Subject: Digest: IDOR — Notes Summary
+
+Here's a digest of what's in your notes on IDOR (from idor-and-bola.md), plus a couple of reputable references:
+
+1. **Core mechanism**: IDOR happens when an app exposes an internal object reference (DB ID, filename, key) and lets users manipulate it, while the server checks the object exists but not that *this user* is entitled to it.
+   Why it matters: This is the root cause behind a huge share of real-world data breaches — it's a logic flaw, not something a scanner reliably catches, so you have to test for it manually. (Your notes: idor-and-bola.md)
+
+2. **BOLA = the API framing of IDOR, and it's #1 on the OWASP API Security Top 10 (2023)**. Typically shows up as `GET /api/orders/1234` returning someone else's order.
+   Why it matters: As more apps move to API-first architectures, this is the single most common and highest-impact API vuln class you'll encounter in real assessments and bug bounties.
+   Source: https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/
+
+3. **Common variants**: sequential/enumerable IDs, IDs exposed in URLs/hidden fields/API responses with no ownership check, and multi-step flows where only step one is authorization-checked.
+   Why it matters: These are the concrete patterns to hunt for in Burp — swap IDs across two test accounts and watch for “step 1 checked, step N not” logic gaps.
+   Source: https://portswigger.net/web-security/access-control/idor
+
+4. **Fix pattern**: always verify server-side that the authenticated identity owns/is entitled to the specific object on *every* request — never rely on IDs being hard to guess as the security boundary.
+   Why it matters: This is the one-line mental model to carry into both pentesting (how to prove it) and secure coding/patching (how to fix it) — useful for both "talk it" and "walk it" work.
+   Source: your notes (idor-and-bola.md), corroborated by OWASP API1:2023 guidance above.
+
+Progress note: No IDOR-specific hands-on lab logged yet in your tracker. Suggested next step: do the PortSwigger "Insecure direct object references" labs under Access Control (portswigger.net/web-security/access-control/idor) to turn this theory into a "walk it" milestone, then log it in the tracker.
+
+

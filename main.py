@@ -22,6 +22,7 @@ FETCH_CHAR_CAP = 5000
 NOTES_DIR = "notes"
 MEMORY_PATH = "memory.json"
 TRACKER_PATH = "tracker.md"
+OUTBOX_PATH = "outbox.txt"
 
 # On-topic default: ties straight into the vuln catalog this project is building toward.
 DEFAULT_URL = "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
@@ -78,6 +79,20 @@ UPDATE_TRACKER_TOOL = {
             "content": {"type": "string", "description": "The full new contents of tracker.md."},
         },
         "required": ["content"],
+    },
+}
+
+SEND_DIGEST_TOOL = {
+    "name": "send_digest",
+    "description": "Send the digest to an email recipient. (v1: writes to outbox.txt instead of a real send.)",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "recipient": {"type": "string", "description": "Email address to send the digest to."},
+            "subject": {"type": "string", "description": "Email subject line."},
+            "body": {"type": "string", "description": "The full digest text to send."},
+        },
+        "required": ["recipient", "subject", "body"],
     },
 }
 
@@ -146,6 +161,13 @@ def update_tracker(content: str) -> str:
     return f"tracker.md updated ({len(content)} chars)."
 
 
+def send_digest(recipient: str, subject: str, body: str) -> str:
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with open(OUTBOX_PATH, "a", encoding="utf-8") as f:
+        f.write(f"=== {timestamp} ===\nTo: {recipient}\nSubject: {subject}\n\n{body}\n\n")
+    return f"Digest written to {OUTBOX_PATH} (to: {recipient})."
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
@@ -157,6 +179,8 @@ def run_tool(name: str, tool_input: dict) -> str:
         return append_memory(tool_input["content"])
     if name == "update_tracker":
         return update_tracker(tool_input["content"])
+    if name == "send_digest":
+        return send_digest(tool_input["recipient"], tool_input["subject"], tool_input["body"])
     return f"Unknown tool: {name}"
 
 
@@ -197,6 +221,7 @@ def main():
                 READ_MEMORY_TOOL,
                 APPEND_MEMORY_TOOL,
                 UPDATE_TRACKER_TOOL,
+                SEND_DIGEST_TOOL,
             ],
             messages=messages,
         )
