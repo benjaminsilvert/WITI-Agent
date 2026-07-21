@@ -2,5 +2,9 @@
   {
     "content": "User completed the Reflected XSS lab on PortSwigger Web Security Academy today (date: this session). Progress note: hands-on \"walk it\" milestone achieved for XSS fundamentals.",
     "timestamp": "2026-07-21T10:29:51.173441"
+  },
+  {
+    "content": "User completed the SQL Injection lab on PortSwigger Web Security Academy this session. Progress note: hands-on \"walk it\" milestone achieved for SQLi fundamentals (Web App Security / Action). Also researched AI security theory this session: OWASP GenAI Security Project / Top 10 for LLM Apps, PortSwigger Web LLM Attacks module, Simon Willison's \"lethal trifecta\" (agentic data exfiltration risk), and MCP prompt injection issues (rug pulls, tool shadowing, tool poisoning) \u2014 relevant to WITI's own agentic attack surface.",
+    "timestamp": "2026-07-21T10:37:57.679489+00:00"
   }
 ]

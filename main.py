@@ -16,11 +16,12 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 MODEL = "claude-sonnet-5"
-MAX_TOKENS = 1024
+MAX_TOKENS = 4096
 FETCH_TIMEOUT_SECONDS = 10
 FETCH_CHAR_CAP = 5000
 NOTES_DIR = "notes"
 MEMORY_PATH = "memory.json"
+TRACKER_PATH = "tracker.md"
 
 # On-topic default: ties straight into the vuln catalog this project is building toward.
 DEFAULT_URL = "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
@@ -63,6 +64,18 @@ APPEND_MEMORY_TOOL = {
         "type": "object",
         "properties": {
             "content": {"type": "string", "description": "The text to remember."},
+        },
+        "required": ["content"],
+    },
+}
+
+UPDATE_TRACKER_TOOL = {
+    "name": "update_tracker",
+    "description": "Overwrite the progress tracker (tracker.md) with new content.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "The full new contents of tracker.md."},
         },
         "required": ["content"],
     },
@@ -127,6 +140,12 @@ def append_memory(content: str) -> str:
     return f"Stored to memory ({len(entries)} entries total)."
 
 
+def update_tracker(content: str) -> str:
+    with open(TRACKER_PATH, "w", encoding="utf-8") as f:
+        f.write(content)
+    return f"tracker.md updated ({len(content)} chars)."
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
@@ -136,6 +155,8 @@ def run_tool(name: str, tool_input: dict) -> str:
         return read_memory()
     if name == "append_memory":
         return append_memory(tool_input["content"])
+    if name == "update_tracker":
+        return update_tracker(tool_input["content"])
     return f"Unknown tool: {name}"
 
 
@@ -170,7 +191,13 @@ def main():
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=system_prompt,
-            tools=[FETCH_URL_TOOL, SEARCH_NOTES_TOOL, READ_MEMORY_TOOL, APPEND_MEMORY_TOOL],
+            tools=[
+                FETCH_URL_TOOL,
+                SEARCH_NOTES_TOOL,
+                READ_MEMORY_TOOL,
+                APPEND_MEMORY_TOOL,
+                UPDATE_TRACKER_TOOL,
+            ],
             messages=messages,
         )
         messages.append({"role": "assistant", "content": response.content})
