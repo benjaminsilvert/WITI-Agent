@@ -92,5 +92,5 @@ After each, run it and skim the code in the editor so you understand what was ad
 - **Keep CLAUDE.md alive:** every time Claude Code does something wrong and you correct it, ask it to add a one-line rule to CLAUDE.md so it won't repeat the mistake.
 - **Small steps beat big ones.** One capability, run it, commit, next. Long sessions drift.
 - **Ask it to teach you.** "Explain this file line by line," "why is this the secure choice," "what would an attacker try here." You're prepping for an interview, not just shipping code.
-- **Where to ask what:** build/debug/"explain this code" -> Claude Code's side chat. Interview strategy / "how does this map to what Snir wants" -> your prep **project** here, which holds your transcripts and game plan.
-- **When you have a v1-vs-v2 demo you're proud of,** remember Snir invited you to share what you build — that write-up is exactly the artifact he asked for.
+- **Where to ask what:** build/debug/"explain this code" -> Claude Code's side chat. Interview strategy / "how does this map to what your interviewer wants" -> your prep **project** here, which holds your transcripts and game plan.
+- **When you have a v1-vs-v2 demo you're proud of,** remember your interviewer invited you to share what you build — that write-up is exactly the artifact they asked for.

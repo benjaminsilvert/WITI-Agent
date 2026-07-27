@@ -119,7 +119,7 @@ def main():
 
         user_request = (
             f"I found this article, can you fetch {url}, and email me "
-            "(silvert.ben@gmail.com) a short shareable digest of it?"
+            "(owner@example.com) a short shareable digest of it?"
         )
         log.write(f"[user] {user_request}\n\n")
         print(f"[user] {user_request}\n")

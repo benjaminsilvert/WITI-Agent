@@ -81,7 +81,7 @@ Each functionality below adds attack surface on purpose. Build v1 with the weakn
 - **Deliberate v1 weakness:** `send_digest` and `update_tracker` execute automatically.
 - **Exploit:** any successful injection immediately causes a real email/write with no chance to catch it.
 - **Patch (v2):** a **deterministic approval gate ("hook") in code** that pauses before any irreversible tool runs and requires an explicit y/n. Key teaching point: the gate lives in **code**, not as a "please ask first" line in the prompt — a probabilistic instruction is not a control.
-- **Principle:** deterministic controls over model reasoning; hooks / human-in-the-loop (exactly what Snir emphasized).
+- **Principle:** deterministic controls over model reasoning; hooks / human-in-the-loop (exactly what your interviewer emphasized).
 
 ### E. Retrieval: `search_notes` (data-layer authorization)
 - **Deliberate v1 weakness:** retrieval returns all notes regardless of sensitivity.

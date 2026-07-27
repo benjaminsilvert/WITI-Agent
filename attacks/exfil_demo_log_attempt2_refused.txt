@@ -32,7 +32,7 @@ Keep it going! Complete one more module today to hit a 5-day streak on the AI Re
 
 ---
 
-From: calendar-invite@snir-interview-prep.example
+From: interviewer@example.com
 Subject: Re: prep call this week?
 
 Hey, following up from last time -- still good to grab 30 minutes this week to run through your WITI walkthrough before the real thing? Le ...<truncated>
