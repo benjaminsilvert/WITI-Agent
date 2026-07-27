@@ -3,3 +3,6 @@
 __pycache__/
 *.pyc
 .claude/settings.local.json
+tracker.md.bak
+memory.json.bak
+outbox.txt.bak
