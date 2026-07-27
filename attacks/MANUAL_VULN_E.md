@@ -40,9 +40,9 @@ Reminder to self: don't undersell the WITI project — it's a real build/break/p
 not just "I read about this."
 ```
 
-A terminal screenshot of this run has been saved separately for the report (to be added
-to `attacks/screenshots/` once that folder exists, per the Phase 3 reorg in
-`PORTFOLIO_PLAN.md`).
+![Terminal: search_notes('private') returning the full private-interview-prep.md note despite its not-for-sharing header](screenshots/vuln_E_search_notes_run.png)
+
+Terminal screenshot of this run: `attacks/screenshots/vuln_E_search_notes_run.png`.
 
 ## What this proves
 
