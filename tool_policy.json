@@ -1,0 +1,32 @@
+{
+  "default": "deny",
+  "tools": {
+    "fetch_url": {
+      "allow": true,
+      "args": {
+        "url_host": ["claude.com", "www.terra.security"]
+      }
+    },
+    "search_notes": {
+      "allow": true
+    },
+    "read_memory": {
+      "allow": true
+    },
+    "append_memory": {
+      "allow": true
+    },
+    "update_tracker": {
+      "allow": true
+    },
+    "send_digest": {
+      "allow": true,
+      "args": {
+        "recipient": "$OWNER_EMAIL"
+      }
+    },
+    "read_inbox": {
+      "allow": true
+    }
+  }
+}

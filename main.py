@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 
 from anthropic import Anthropic
@@ -103,6 +104,21 @@ READ_INBOX_TOOL = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+# All tool schemas in one place so both the API call and the policy filter
+# (see load_policy/check_policy below) can iterate over the same list.
+ALL_TOOLS = [
+    FETCH_URL_TOOL,
+    SEARCH_NOTES_TOOL,
+    READ_MEMORY_TOOL,
+    APPEND_MEMORY_TOOL,
+    UPDATE_TRACKER_TOOL,
+    SEND_DIGEST_TOOL,
+    READ_INBOX_TOOL,
+]
+
+# Populated once at startup by load_policy(); read by check_policy() on every tool call.
+TOOL_POLICY = None
+
 
 def fetch_url(url: str) -> str:
     try:
@@ -187,7 +203,71 @@ def read_inbox() -> str:
     return "\n\n---\n\n".join(parts)
 
 
+def _resolve_placeholder(value):
+    """Substitute a "$VAR" string with os.environ["VAR"]; exit if that var is unset.
+
+    Fails closed on purpose: a policy that references an env var which isn't
+    there should stop the program, not silently fall back to "no restriction".
+    """
+    if isinstance(value, str) and value.startswith("$"):
+        var_name = value[1:]
+        resolved = os.environ.get(var_name)
+        if not resolved:
+            sys.exit(f"{var_name} is not set. Add it to .env before running WITI (required by tool_policy.json).")
+        return resolved
+    return value
+
+
+def load_policy(path: str = "tool_policy.json") -> dict:
+    """Load tool_policy.json once and resolve any $VAR placeholders in its args rules."""
+    with open(path, encoding="utf-8") as f:
+        policy = json.load(f)
+
+    for rule in policy.get("tools", {}).values():
+        args = rule.get("args", {})
+        for key, value in list(args.items()):
+            # An args value can be a single allowed value (e.g. recipient) or
+            # a list of allowed values (e.g. url_host) -- resolve either shape.
+            if isinstance(value, list):
+                args[key] = [_resolve_placeholder(v) for v in value]
+            else:
+                args[key] = _resolve_placeholder(value)
+
+    return policy
+
+
+def check_policy(name: str, tool_input: dict) -> tuple[bool, str]:
+    """Check a proposed tool call against TOOL_POLICY. Returns (allowed, reason)."""
+    rule = TOOL_POLICY.get("tools", {}).get(name)
+    if not rule or not rule.get("allow"):
+        return False, f"tool '{name}' is not permitted (default: {TOOL_POLICY.get('default', 'deny')})"
+
+    for key, allowed in rule.get("args", {}).items():
+        if name == "fetch_url" and key == "url_host":
+            # Compare the parsed hostname, not a substring of the raw URL --
+            # substring matching would let "claude.com.evil.example" or
+            # "notclaude.com" slip past a ["claude.com"] allow-list.
+            host = urllib.parse.urlparse(tool_input.get("url", "")).hostname
+            if host not in allowed:
+                return False, f"host '{host}' not in allow-list for fetch_url ({allowed})"
+            continue
+
+        value = tool_input.get(key)
+        allowed_values = allowed if isinstance(allowed, list) else [allowed]
+        if value not in allowed_values:
+            return False, f"{name}.{key} = '{value}' not in allow-list ({allowed_values})"
+
+    return True, "allowed"
+
+
 def run_tool(name: str, tool_input: dict) -> str:
+    # Policy check happens before any dispatch -- a denied call never reaches
+    # the tool function, no matter what name/args the model sends.
+    allowed, reason = check_policy(name, tool_input)
+    if not allowed:
+        print(f"[POLICY DENY] {name}({tool_input}) -> {reason}")
+        return f"Denied by policy: {reason}"
+
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
     if name == "search_notes":
@@ -210,6 +290,15 @@ def main():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         sys.exit("ANTHROPIC_API_KEY is not set. Add it to .env first.")
+
+    # Load the policy once here (after load_dotenv, so $VAR placeholders can
+    # resolve) and stash it in the module global that check_policy() reads.
+    global TOOL_POLICY
+    TOOL_POLICY = load_policy()
+
+    # Only advertise tools the policy allows at all -- a tool the model never
+    # sees, it can't call. (Argument-level rules still apply per-call in run_tool.)
+    tools = [t for t in ALL_TOOLS if TOOL_POLICY["tools"].get(t["name"], {}).get("allow")]
 
     client = Anthropic(api_key=api_key)
     system_prompt = open("prompts/system.md", encoding="utf-8").read()
@@ -236,15 +325,7 @@ def main():
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=system_prompt,
-            tools=[
-                FETCH_URL_TOOL,
-                SEARCH_NOTES_TOOL,
-                READ_MEMORY_TOOL,
-                APPEND_MEMORY_TOOL,
-                UPDATE_TRACKER_TOOL,
-                SEND_DIGEST_TOOL,
-                READ_INBOX_TOOL,
-            ],
+            tools=tools,
             messages=messages,
         )
         messages.append({"role": "assistant", "content": response.content})
