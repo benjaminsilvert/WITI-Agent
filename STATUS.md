@@ -389,3 +389,19 @@ none of it exists yet: untrusted-content `<untrusted>` wrapping + domain allow-l
 tool call (D); `sensitivity` front-matter + filtered retrieval in `search_notes` (E);
 removing the planted secret from `prompts/system.md` entirely (F); and splitting the tool
 list by phase so the untrusted-content-reading phase has no `send_digest`/write tools (G).
+
+---
+
+## 8. Patch status update
+
+**2026-08-11:** Vulns A and B partially patched via a shared argument-aware policy engine
+(`load_policy`/`check_policy` in `main.py`, config in `tool_policy.json`, committed
+`ce0383e`). B: `send_digest` recipient is gated against `$OWNER_EMAIL` in `check_policy`
+before dispatch — enforced upstream in `run_tool`, not in the function body
+(`main.py:187-191` still has no internal recipient check, so the control is single-layer
+at the chokepoint, not defense-in-depth to the sink). A: `fetch_url` has a `url_host`
+allow-list (`claude.com`, `www.terra.security`) enforced the same way. Policy is
+deny-by-default for unknown tools, but C's and H's sinks (`append_memory`,
+`update_tracker`, `read_inbox`) are all still `allow: true` — not yet patched.
+Verification via re-running the A+B chain exploit against the patched code: still
+pending.
