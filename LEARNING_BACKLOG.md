@@ -1,0 +1,35 @@
+# Learning Backlog
+
+Personal to-learn list — things I've implemented or reviewed but want to understand deeply
+later. Not an audit; open questions are expected and fine to leave unanswered here.
+
+---
+
+## Added 2026-08-11 — the tool-policy engine (commits ce0383e, 447eb06)
+
+Reviewed the A/B patch but can't yet explain it unaided. Three things to understand:
+
+1. **`send_digest` is really gated now.**
+   Anchor: `check_policy` at `main.py:239-260`, called from `run_tool` at `main.py:266`.
+   Claim: a caller-supplied recipient is checked against `$OWNER_EMAIL` and refused before
+   the tool runs, so it's enforced in deterministic code, not model judgment.
+   Question to answer later: walk through exactly what happens, line by line, when the
+   model tries to send to `attacker@evil.example` — where does it get stopped and what
+   string comes back?
+
+2. **The gate is upstream, not in the function.**
+   Anchor: `send_digest` body at `main.py:187-191`.
+   Claim: the function itself has no recipient check — all protection is in
+   `check_policy`/`run_tool` above it. This is "single-layer at the chokepoint, not
+   defense-in-depth to the sink."
+   Question: what would an attacker need to do to bypass `run_tool` entirely, and what
+   second layer inside the function body would stop them?
+
+3. **One engine patches both A and B.**
+   Anchor: `tool_policy.json` (the `fetch_url.url_host` allow-list vs. the
+   `send_digest.recipient` rule), plus the tool-advertising filter at `main.py:301`.
+   Claim: the same policy layer enforces A's source control (which domains `fetch_url`
+   may hit) and B's sink control (who `send_digest` may email) — this is the "sources
+   first" fix from `PORTFOLIO_PLAN.md`.
+   Question: how does `check_policy` handle `fetch_url` differently from `send_digest`,
+   and why does `url_host` need special-case code when `recipient` doesn't?
