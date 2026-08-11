@@ -405,3 +405,35 @@ deny-by-default for unknown tools, but C's and H's sinks (`append_memory`,
 `update_tracker`, `read_inbox`) are all still `allow: true` — not yet patched.
 Verification via re-running the A+B chain exploit against the patched code: still
 pending.
+
+---
+
+## 9. Session log — 2026-08-11
+
+This session did not touch WITI's own code or its vuln patches beyond the diagnostic read
+of `load_policy`/`check_policy` recorded in §8. The work was three new root-level docs plus
+one new tracked directory, all outside `main.py`/`tool_policy.json`:
+
+- `BUILD_ENV_HARDENING.md` (`447eb06`) — a separate threat model from WITI's A–H: controls
+  on the Claude Code dev-environment harness itself. Three findings: the `allow` array in
+  `.claude/settings.local.json` is not a security boundary (only `deny` is); a live refusal
+  to read `.env` with the deny rules removed was model judgment, not enforcement (ruled out
+  against both project- and user-level settings); and the `Edit`/`Write` deny rules on
+  `settings.local.json` don't cover Claude Code's own permission-write mechanism, which grew
+  the allow array mid-session regardless. `curl` and `PowerShell Invoke-WebRequest`
+  before/after verification is marked pending, screenshots to land in `build-env/screenshots/`.
+- `LEARNING_BACKLOG.md` (`5447751`) — new personal to-learn file, seeded with three open
+  questions about the tool-policy engine from §8.
+- `SESSION_PROTOCOL.md` (`db1852a`) — documents the start/end-of-session prompts for keeping
+  the memoryless Claude project chat in sync with this repo, and which files belong in the
+  knowledge base vs. attached fresh vs. git-only.
+
+**Pending going into next session:**
+- `curl`/`Invoke-WebRequest` egress-control verification (`BUILD_ENV_HARDENING.md`,
+  Finding 2 remediation + the known PowerShell gap under Layer 1).
+- Layer 2 (OS-level read-only permissions on `settings.local.json`) is specced but not
+  implemented.
+- A+B chain-exploit re-run against the patched `main.py` (carried over from §8).
+- The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
+- C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
+  from §8).

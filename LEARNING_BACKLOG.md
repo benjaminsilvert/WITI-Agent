@@ -33,3 +33,19 @@ Reviewed the A/B patch but can't yet explain it unaided. Three things to underst
    first" fix from `PORTFOLIO_PLAN.md`.
    Question: how does `check_policy` handle `fetch_url` differently from `send_digest`,
    and why does `url_host` need special-case code when `recipient` doesn't?
+
+---
+
+## Added 2026-08-11 — Claude Code's own permission-write mechanism (`BUILD_ENV_HARDENING.md` Finding 3)
+
+Reviewed live, not yet understood: `.claude/settings.local.json`'s `allow` array grew by
+two entries during this session (`Bash(mkdir -p "build-env/screenshots")`,
+`Bash(touch "build-env/screenshots/.gitkeep")`) while `Edit(./.claude/settings.local.json)`
+and `Write(./.claude/settings.local.json)` were both denied at the time. The rule behaved
+exactly as written — it blocked the `Edit`/`Write` tools — but didn't stop the file from
+changing, because something else wrote it.
+
+Question to answer later: what is the actual write path Claude Code uses to persist a
+newly-approved permission (a prompt approval turning into a saved `allow` entry), and is it
+gate-able from inside `.claude/settings.local.json` at all, or does it require the Layer 2
+(OS-level file-permission) fix noted in `BUILD_ENV_HARDENING.md` instead?
