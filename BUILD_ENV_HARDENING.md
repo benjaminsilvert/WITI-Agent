@@ -42,10 +42,22 @@ encountered live in my own tooling rather than in WITI.
 https://example.com` carries no model-side disposition to refuse, so a block has only one
 explanation — enforcement, not judgment.
 
-**Verification pending — see `build-env/screenshots/`:**
-- `curl https://example.com` before/after the `Bash(curl *)` deny rule (Finding 2 remediation).
-- `PowerShell Invoke-WebRequest` against the same target, to check the known gap in the
-  `Bash(curl *)` rule noted under Current configuration, below.
+**Verification complete (2026-08-12) — see `build-env/screenshots/`:**
+- `curl https://example.com` via the `Bash` tool was **denied at the permission layer** —
+  "Permission to use Bash with command curl ... has been denied" — before the command executed.
+  A plain `curl` call carries no model-side reason to refuse, so the block is attributable to
+  enforcement, not model judgment: the Finding 2 remediation holds.
+  Screenshot: `build_env_curl_bash_blocked.png`.
+- `PowerShell Invoke-WebRequest https://example.com` against the same target **reached
+  execution** and failed on an unrelated `NonInteractive`-mode error — it was *not* intercepted
+  by any deny rule. A failure is not a block: this confirmed live the "known gap" noted below,
+  that `Bash(curl *)` does not cover the PowerShell egress path.
+  Screenshot: `build_env_invokewebrequest_powershell_allowed.png`.
+- A `PowerShell(Invoke-WebRequest *)` deny rule was then added and the same command **re-run:
+  now denied** at the permission layer, before execution (the environment error no longer
+  reached). This closes the demonstrated PowerShell path — but only that path; see the scope
+  caveat under the rule in Current configuration.
+  Screenshot: `build_env_invokewebrequest_powershell_blocked.png`.
 
 ### Finding 3: a control can do exactly what it says and still miss the threat
 
@@ -69,6 +81,35 @@ but the permission system has its own write path outside of both.
 
 Remediation belongs at Layer 2 (OS-level file permissions making the config read-only to the
 agent's process), not Layer 1 — see Layer 2, below.
+
+### Finding 4: an agent's *analysis* of a control is no more trustworthy than its narration
+
+Finding 2 showed that the agent's *claim of a block* isn't evidence of a block. Finding 4 is
+the mirror on the causal side: the agent's *claim about what caused a change* isn't evidence
+either.
+
+The `PowerShell(Invoke-WebRequest *)` deny rule above was added by a manual hand-edit in the
+editor — by the human, not by Claude Code. On re-reading the file, Claude Code correctly
+observed that the new deny line had appeared while `Edit(./.claude/settings.local.json)` and
+`Write(./.claude/settings.local.json)` were still denied, and concluded this was "a second
+instance of Finding 3" — the boundary being bypassed again.
+
+That conclusion is false. The `Edit`/`Write` deny rules govern the *agent's* Edit and Write
+tools — the mechanisms by which Claude Code modifies a file. A human editing in the editor
+uses neither; the change is made under the human's own OS identity, which those rules were
+never meant to and cannot restrict. Nothing was bypassed: the control did exactly its job (the
+agent cannot edit its own boundary), and a human — who is permitted to — made the change.
+Finding 3 required *the agent* to be the writer; that premise was false here, and it was not
+visible in the file diff or the transcript — only the human knew it.
+
+This is the sharpest instance of this document's own thesis. Claude Code was about to commit
+this false attribution into *this file* — the document whose entire subject is not recording
+conclusions the enforcement layer doesn't support — and was stopped only because a human held
+a fact the agent could not see. Verification of a control's behavior, *including who exercised
+it*, belongs with the human and the enforcement layer, never with the agent's own account. It
+also reinforces Layer 2: the hand-edit succeeded where the agent's tools were denied precisely
+because human and agent are different identities — exactly the boundary Layer 2 makes
+enforceable at the OS level.
 
 ### Current configuration
 
@@ -103,7 +144,8 @@ agent's process), not Layer 1 — see Layer 2, below.
       "Write(./.claude/settings.local.json)",
       "Read(./.env)",
       "Read(./.env.*)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "PowerShell(Invoke-WebRequest *)"
     ]
   }
 }
@@ -118,11 +160,23 @@ Deny-rule rationale:
 - `Read(./.env)` — blocks direct reads of the secrets file.
 - `Read(./.env.*)` — closes the glob variant (`.env.local`, `.env.production`, etc.) so the
   block isn't just literal-filename-deep.
-- `Bash(curl *)` — closes a generic network-egress path that could exfiltrate file contents
-  directly to a remote host, bypassing tool-level controls entirely.
-  **Known gap — untested:** this rule is scoped to the `Bash` tool. In PowerShell, `curl` is
-  an alias for `Invoke-WebRequest`, so the same egress path is likely still reachable via
-  `PowerShell(...)`, which this rule does not match. No deny rule has been added for this yet.
+- - `Bash(curl *)` — closes a generic network-egress path that could exfiltrate file contents
+  directly to a remote host, bypassing tool-level controls entirely. **Verified blocked at the
+  enforcement layer (2026-08-12) — see Finding 2.**
+  **Gap — confirmed and partially closed:** this rule is scoped to the `Bash` tool. Testing
+  confirmed the same egress path was reachable via `PowerShell(Invoke-WebRequest ...)`, which
+  this rule does not match. The `PowerShell(Invoke-WebRequest *)` rule below now closes the
+  *demonstrated* command; it is not comprehensive — see its scope caveat.
+- `PowerShell(Invoke-WebRequest *)` — closes the specific PowerShell egress command tested in
+  Finding 2. **Scope caveat — this is a per-command string rule, not egress control.**
+  `Invoke-WebRequest` has PowerShell aliases (`curl`, `wget`, `iwr`) and a sibling
+  (`Invoke-RestMethod` / `irm`), none of which this rule matches, and PowerShell can reach the
+  network directly via .NET (e.g. `[System.Net.WebClient]`) under no command name a rule like
+  this could enumerate. Blocking egress by naming commands means listing every spelling of
+  "reach the network" and still missing one — the "universal tools beat per-tool controls"
+  problem. The durable fix is process-identity isolation (Layer 2) and/or network-level egress
+  control (Layer 4), not more Layer 1 string rules. This rule is a documented speed bump for
+  the one proven path, not a boundary.
 
 None of the deny rules collide with the existing `allow` entries — the allow list is scoped
 to specific `git`, Python, and PowerShell invocations, none of which touch `curl` or the
@@ -131,6 +185,13 @@ settings file — so no existing workflow is affected.
 ## Layer 2 — OS / process identity
 Not yet implemented. Pending: OS-level file permissions making `.claude/settings.local.json`
 read-only to the agent's process, per Finding 3's remediation above.
+
+**Motivated by Findings 3 and 4.** Finding 3 showed a tool-scoped Layer 1 rule cannot cover
+the agent's own permission-write path. Finding 4 showed *why the target boundary is identity,
+not tools*: a human hand-edit succeeded where the agent's Edit/Write tools were denied, because
+human and agent are different OS identities. Layer 2 makes that identity boundary the
+enforcement mechanism — the file writable by the human's user, read-only to the agent's process
+— so the control no longer depends on naming every tool the agent might use to write.
 
 ## Layer 3 — Sandbox / container
 Not yet implemented.
