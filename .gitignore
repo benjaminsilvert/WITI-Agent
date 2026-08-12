@@ -6,3 +6,6 @@ __pycache__/
 tracker.md.bak
 memory.json.bak
 outbox.txt.bak
+
+# personal learning notes — not for the public repo
+LESSONS_LEARNED.md

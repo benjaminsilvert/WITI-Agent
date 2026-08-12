@@ -437,3 +437,43 @@ one new tracked directory, all outside `main.py`/`tool_policy.json`:
 - The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
 - C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
   from §8).
+
+---
+
+## 10. Session log — 2026-08-12
+
+Closed out the pending Layer-1 verification from §9 and corrected a live misattribution in
+`BUILD_ENV_HARDENING.md`. No changes to `main.py`/`tool_policy.json`.
+
+- **Egress-control verification, complete (`1eb7e23`):** `curl https://example.com` via the
+  `Bash` tool was denied at the permission layer before executing — Finding 2's remediation
+  holds, since a plain `curl` call carries no model-side reason to refuse. `PowerShell
+  Invoke-WebRequest https://example.com` first *reached execution* (failed on an unrelated
+  `NonInteractive`-mode error, not a permission block), confirming the known gap that
+  `Bash(curl *)` doesn't cover PowerShell egress. A `PowerShell(Invoke-WebRequest *)` deny
+  rule was then added and the same command re-run: denied before execution, closing that
+  specific path. All three runs are screenshotted in `build-env/screenshots/`.
+- **Finding 4 added to `BUILD_ENV_HARDENING.md` (human hand-edit, not by this agent):** the
+  new `PowerShell(Invoke-WebRequest *)` deny rule appeared in `.claude/settings.local.json`
+  while `Edit(./.claude/settings.local.json)`/`Write(./.claude/settings.local.json)` were
+  still denied — the same surface shape as Finding 3. This agent read that as a second
+  instance of Finding 3 and was prepared to record it as such. That conclusion was false: the
+  change was a human hand-edit in the editor, not written by this agent's `Edit`/`Write`
+  tools, so those deny rules were never in the path at all — nothing was bypassed. Finding 4
+  is that the agent's causal claim about *what produced a change* is exactly as unverifiable
+  from the transcript as its claims about *whether something was blocked* (Finding 2), and
+  needed a human-known fact to correct.
+- **`.gitignore` gains `LESSONS_LEARNED.md`** (personal notes, kept local, never tracked;
+  `git check-ignore -v` confirmed the match). The file itself is not part of this repo's
+  tracked history by design.
+
+**Pending going into next session:**
+- Layer 2 (OS-level read-only permissions on `settings.local.json`) — now has two concrete
+  drivers: Finding 3 (agent-side bypass of the allow array) and Finding 4's closing note (the
+  human/agent identity boundary Layer 2 would make enforceable at the OS level).
+- The `PowerShell(Invoke-WebRequest *)` fix is scoped to that one command shape — other
+  PowerShell-native egress paths (e.g. `.NET` `WebClient`/`HttpClient` calls) are unverified.
+- A+B chain-exploit re-run against the patched `main.py` (carried over from §9/§8).
+- The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
+- C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
+  from §9/§8).
