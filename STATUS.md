@@ -477,3 +477,43 @@ Closed out the pending Layer-1 verification from §9 and corrected a live misatt
 - The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
 - C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
   from §9/§8).
+
+---
+
+## 11. Session log — 2026-08-18
+
+Read-only verification session — Layer 2 groundwork, no code or policy changes. `main.py`,
+`tool_policy.json`, and `.claude/settings.local.json` were not touched.
+
+- **Host identity check:** `whoami` → `llywelyn\silve`, confirming which OS account this
+  session runs as — the baseline Layer 2 will change (agent moving to its own account).
+- **Dependency sanity check:** compared `main.py`'s import lines against
+  `requirements.txt`. Only `anthropic` and `python-dotenv` are directly imported; every
+  other pinned line (`httpx`, `pydantic`, `certifi`, etc.) is a transitive dependency of
+  those two. No mismatch found.
+- **Pre-push git safety check (the three-command drill from `LESSONS_LEARNED.md` §10):**
+  `.gitignore` lists `.env`; `git status --ignored` confirms git is actually ignoring it
+  (not tracked, not staged); `git ls-files | findstr /I "env"` returned only
+  `BUILD_ENV_HARDENING.md` and `build-env/screenshots/*` (matched on the letters "env", not
+  the actual secret) — `.env` itself has never been committed. Clean result, no action
+  needed.
+- **`LESSONS_LEARNED.md` — new session entry appended** (local file, gitignored per §10's
+  2026-08-12 entry, so this does not appear in `git status`/`git diff` and is not part of
+  this session's commit). Captured: the Windows-account-isolation framing for Layer 2, what
+  a `.venv`/`requirements.txt` actually are and why `.venv` isn't portable across a folder
+  move, a supply-chain note on `requirements.txt` tampering, a recap of Findings 1–4, child-
+  process identity inheritance as the reason durable controls belong in the environment
+  rather than as per-tool rules, how to read a `requirements.txt` for completeness, why
+  deleting (not moving) `.venv` is safe, and the three-command git safety drill above.
+
+**Pending going into next session:**
+- Layer 2 (OS-level agent identity / read-only permissions on `settings.local.json`) — still
+  specced, not implemented. This session's `whoami` check and the `.venv`/`requirements.txt`
+  groundwork in `LESSONS_LEARNED.md` are preparation for the actual account move, which
+  hasn't happened yet — no project files were relocated.
+- The `PowerShell(Invoke-WebRequest *)` fix remains scoped to that one command shape; other
+  PowerShell-native egress paths are unverified (carried over from §10).
+- A+B chain-exploit re-run against the patched `main.py` (carried over from §10/§9/§8).
+- The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
+- C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
+  from §10/§9/§8).
