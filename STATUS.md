@@ -517,3 +517,47 @@ Read-only verification session — Layer 2 groundwork, no code or policy changes
 - The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
 - C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
   from §10/§9/§8).
+
+---
+
+## 12. Session log — 2026-08-19
+
+Layer 2 (OS-level agent identity), half 1 complete + half 2 probe passed. The project was
+relocated out of the OneDrive/silve profile and the witi-agent identity switch was proven. No
+changes to `main.py`/`tool_policy.json`/`prompts/system.md`.
+
+- Project relocated from `C:\Users\silve\OneDrive\Desktop\witi-agent\files` to
+  `C:\witi-project` (neutral drive-root location outside any user profile — prerequisite for
+  per-identity permissions, since a profile folder is locked to other accounts). Done as
+  copy-then-verify, not move. Folder deliberately renamed `witi-project` (not `witi-agent`) to
+  keep the location name distinct from the account name.
+- Move verified at every layer: 465 files matched byte-for-byte (`.venv` excluded on purpose);
+  git live in new home (`git status` clean, commit `6d36a1a`, origin remote intact); `.venv`
+  rebuilt fresh from `requirements.txt` (all 17 pinned packages, no errors); `main.py`
+  import-tested clean from the new location without running the agent loop; untracked files
+  confirmed present in new copy (`.env`, three `.bak`s, `LESSONS_LEARNED.md`). Latest commit
+  pushed to `origin/main` before the move as a fallback.
+- Identity probe passed: `runas /user:witi-agent "cmd /c whoami & pause"` returned
+  `llywelyn\witi-agent` in its own spawned window, vs. `llywelyn\silve` in the normal terminal —
+  proving a process can be launched as the restricted account. Cheap probe run before building
+  any permission scheme, to de-risk the load-bearing assumption first.
+- Cursor and Claude Code both repointed to `C:\witi-project`.
+
+**Pending going into next session:**
+- Half 2, the payoff — not yet started: set OS file permissions so witi-agent can read/run the
+  project but cannot modify the control files. Read-only to witi-agent:
+  `.claude/settings.local.json` (the Findings 3/4 fix), `prompts/system.md`, `main.py`,
+  `tool_policy.json`. Keep writable: `memory.json`, `tracker.md`, `outbox.txt` (the agent's
+  legitimate workspace). `.env` handling (unreadable to witi-agent while the agent can still
+  use the key at runtime) to be worked out as its own sub-step. This is the next session's
+  starting point.
+- `.claude/settings.local.json` has stale old-path entries baked in from the OneDrive location
+  (e.g. the `Bash(cd C:\Users\silve\OneDrive\Desktop\witi-agent\fil…)` allow rule) — needs
+  updating to `C:\witi-project`.
+- Original folder not yet deleted — blocked on OneDrive "sync pending" during the delete
+  attempt (tray icon said synced, folder status said pending; a contradiction not resolved).
+  Retry later with OneDrive paused; low priority since everything is safe in `C:\witi-project`
+  + on GitHub.
+- Carried over: A+B chain-exploit re-run against the patched `main.py`; the three
+  `LEARNING_BACKLOG.md` tool-policy-engine questions; C/H sinks (`append_memory`,
+  `update_tracker`, `read_inbox`) still unpatched.
