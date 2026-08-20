@@ -561,3 +561,46 @@ changes to `main.py`/`tool_policy.json`/`prompts/system.md`.
 - Carried over: A+B chain-exploit re-run against the patched `main.py`; the three
   `LEARNING_BACKLOG.md` tool-policy-engine questions; C/H sinks (`append_memory`,
   `update_tracker`, `read_inbox`) still unpatched.
+
+---
+
+## 13. Session log — 2026-08-20
+
+Layer 2 half 2 (the payoff) complete and verified. `.claude/settings.local.json`,
+`tool_policy.json`, and `prompts/system.md` are now locked against the `witi-agent` account;
+`.env` is locked against both read and write. No changes to `main.py`/`tool_policy.json`
+content or `prompts/system.md` content — only OS-level ACLs changed.
+
+- Four `icacls` explicit-deny rules applied for `witi-agent`: `.claude/settings.local.json`,
+  `tool_policy.json`, and `prompts/system.md` set deny-write (`W`); `.env` set
+  deny-read-and-write (`R,W`). Each explicit deny overrides the inherited
+  `Authenticated Users:(M)` grant still present on the file — the same "explicit deny beats a
+  broader grant" precedence Layer 1 relies on.
+- Verified at the enforcement layer (not by reading the ACL): `runas /user:witi-agent` write
+  attempt on `tool_policy.json` → "Access is denied." `runas /user:witi-agent` read attempt on
+  `.env` (`type .env`) → "Access is denied."
+- Scope caveat recorded: the lock holds only because `witi-agent` is a non-administrator
+  account — an admin identity can override any file ACL. Half 1's account-separation work
+  (2026-08-19) was the load-bearing prerequisite for this to mean anything.
+- Deliberate gap recorded: `main.py` was left writable by `witi-agent` for development
+  convenience (so Claude Code can keep assisting with A–H patching), with the known tradeoff
+  that a writable `main.py` can load-time-bypass the locked `tool_policy.json`/`system.md` —
+  e.g. by simply not calling `check_policy`. Flagged to revisit at project end.
+- Full detail and rationale recorded in `BUILD_ENV_HARDENING.md`, Layer 2 section (status
+  updated from "Not yet implemented" to "Implemented and verified").
+
+**Pending going into next session:**
+- `.claude/settings.local.json` still has stale old-path entries baked in from the OneDrive
+  location (e.g. the `Bash(cd C:\Users\silve\OneDrive\Desktop\witi-agent\fil…)` allow rule) —
+  needs updating to `C:\witi-project` (carried over from §12).
+- Whether/when to switch Claude Code itself to run as `witi-agent` (rather than as `silve`) has
+  not been decided — currently Claude Code still runs under the human's own identity, so the
+  Layer 2 lock protects the control files from the *agent's runtime process* but not from
+  Claude Code's own file-editing tools today.
+- WITI-runtime isolation (the second threat model named in `BUILD_ENV_HARDENING.md`'s new
+  scope-separation note — attacker = arbitrary internet input via vulns A–H) remains fully
+  deferred to the A–H remediation track; nothing in Layer 1–4 touches it.
+- A+B chain-exploit re-run against the patched `main.py` (carried over from §12/§11/§10/§9/§8).
+- The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
+- C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
+  from §12/§11/§10/§9/§8).

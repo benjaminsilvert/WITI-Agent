@@ -5,6 +5,16 @@ Code instance used to build WITI — not WITI itself. WITI's deliberate vulnerab
 (see `VULN_CATALOG.md`) remain intentionally unpatched by design; that is a separate threat
 model with a separate remediation track (`PORTFOLIO_PLAN.md` Phase 2).
 
+**Two threat models, not one.** This project actually has two distinct attackers in scope:
+the build environment, where the attacker is Claude Code itself — via prompt injection, a
+bug, or an upstream compromise — and WITI at runtime, where the attacker is anyone on the
+internet who can get input into the agent (vulns A–H). These map to a target end-state of
+**three separate OS identities** — the human developer, the Claude Code builder, and the WITI
+runtime — so that a compromise of one does not inherit the powers of the others (least
+privilege applied as a threat model, not just a config setting). **This document's Layer 1–4
+work is scoped to the builder identity only;** WITI-runtime isolation is deferred to the A–H
+remediation track referenced above.
+
 ## Layer 1 — Coding-agent harness
 
 ### Finding 1: an allowlist is not a control
@@ -183,8 +193,7 @@ to specific `git`, Python, and PowerShell invocations, none of which touch `curl
 settings file — so no existing workflow is affected.
 
 ## Layer 2 — OS / process identity
-Not yet implemented. Pending: OS-level file permissions making `.claude/settings.local.json`
-read-only to the agent's process, per Finding 3's remediation above.
+**Implemented and verified (half 1: 2026-08-19, half 2: 2026-08-20).**
 
 **Motivated by Findings 3 and 4.** Finding 3 showed a tool-scoped Layer 1 rule cannot cover
 the agent's own permission-write path. Finding 4 showed *why the target boundary is identity,
@@ -192,6 +201,45 @@ not tools*: a human hand-edit succeeded where the agent's Edit/Write tools were 
 human and agent are different OS identities. Layer 2 makes that identity boundary the
 enforcement mechanism — the file writable by the human's user, read-only to the agent's process
 — so the control no longer depends on naming every tool the agent might use to write.
+
+**Half 1 (2026-08-19):** the project was relocated out of the OneDrive/silve profile to a
+neutral location (`C:\witi-project`) and a separate `witi-agent` OS account was proven able to
+launch a process (`runas /user:witi-agent`) — the account-separation prerequisite Layer 2's
+file locks depend on. See `STATUS.md` §12.
+
+### Half 2: control files locked to witi-agent via icacls (2026-08-20)
+
+Four files were made restricted to the `witi-agent` account with `icacls` explicit-deny rules:
+
+- `.claude/settings.local.json` — deny-write (`W`)
+- `tool_policy.json` — deny-write (`W`)
+- `prompts/system.md` — deny-write (`W`)
+- `.env` — deny-read-and-write (`R,W`)
+
+Each explicit deny overrides an inherited `Authenticated Users:(M)` grant still present in the
+same ACL — Windows resolves an explicit deny ahead of an inherited allow regardless of order,
+the same "explicit deny beats a broader grant" precedence Layer 1 relies on for `deny` beating
+`allow` in `.claude/settings.local.json`.
+
+**Verified at the enforcement layer, not by reading the ACL** — per this document's own Finding
+2 discipline, a rule's presence in a config is not evidence it holds:
+- `runas /user:witi-agent` attempting to write `tool_policy.json` returned **"Access is
+  denied."**
+- `runas /user:witi-agent` attempting to read `.env` (`type .env`) returned **"Access is
+  denied."**
+
+**Scope caveat:** this binds only because `witi-agent` is a **non-administrator** account — an
+administrator identity can override file ACLs outright, `icacls` included. This is why half 1's
+account-separation groundwork was the real prerequisite for half 2, not a formality: the lock
+is only as strong as the low-privilege account it's attached to.
+
+**Deliberate gap — `main.py` left writable:** `main.py` was not locked, so that Claude Code can
+still assist with the A–H patching work still to come. Known tradeoff: a writable `main.py` can
+itself load-time-bypass the locked `tool_policy.json`/`system.md` — e.g. an edited `main.py`
+could simply stop calling `check_policy` or read a different prompt file — so the current lock
+set secures the *config* but not the *code path that consults it*. Revisit whether `main.py`
+should also be locked once the A–H patch work is complete and no further edits to it are
+expected.
 
 ## Layer 3 — Sandbox / container
 Not yet implemented.
