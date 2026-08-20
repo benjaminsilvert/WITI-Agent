@@ -593,10 +593,6 @@ content or `prompts/system.md` content — only OS-level ACLs changed.
 - `.claude/settings.local.json` still has stale old-path entries baked in from the OneDrive
   location (e.g. the `Bash(cd C:\Users\silve\OneDrive\Desktop\witi-agent\fil…)` allow rule) —
   needs updating to `C:\witi-project` (carried over from §12).
-- Whether/when to switch Claude Code itself to run as `witi-agent` (rather than as `silve`) has
-  not been decided — currently Claude Code still runs under the human's own identity, so the
-  Layer 2 lock protects the control files from the *agent's runtime process* but not from
-  Claude Code's own file-editing tools today.
 - WITI-runtime isolation (the second threat model named in `BUILD_ENV_HARDENING.md`'s new
   scope-separation note — attacker = arbitrary internet input via vulns A–H) remains fully
   deferred to the A–H remediation track; nothing in Layer 1–4 touches it.
@@ -604,3 +600,38 @@ content or `prompts/system.md` content — only OS-level ACLs changed.
 - The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
 - C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
   from §12/§11/§10/§9/§8).
+
+---
+
+## 14. Session log — 2026-08-20 (continued) — Layer 2 half 2 verified end-to-end against a live agent
+
+Closes out §13's open question of whether Claude Code itself could run as `witi-agent`, and
+proves the icacls locks hold against the actual thing Layer 2 exists to contain — a live Claude
+Code process, not just a manual `runas` probe. No changes to `main.py`/`tool_policy.json`
+content or `prompts/system.md` content.
+
+- A fully separate, isolated Claude Code was installed under the restricted `witi-agent`
+  Windows account — its own binary at `C:\Users\witi-agent\.local\bin\claude.exe`, its own
+  `~/.claude` config/auth, sharing nothing with `silve`'s install. It authenticated
+  independently (its own fresh login).
+- Running as `witi-agent`, that Claude Code instance attempted to **write** `tool_policy.json`
+  and was refused by the OS (`EPERM` / `UnauthorizedAccessException`); it attempted to **read**
+  `.env` and was refused the same way (`EPERM`). Both refusals were filesystem-level —
+  structural enforcement, not a model-side decline — though the model also independently
+  declined to attempt a bypass (defense-in-depth, not the load-bearing control).
+- **This closes the Findings 3/4 gap at the enforcement layer.** The boundary is now keyed to
+  the agent's OS identity (`witi-agent`), not to tool-name deny rules the agent could route
+  around — proven against the actual mechanism (a real Claude Code process), not a stand-in.
+- Full detail recorded in `BUILD_ENV_HARDENING.md`, Layer 2 section (status line updated to
+  "Implemented and verified end-to-end against a live agent").
+
+**Pending going into next session:**
+- `.claude/settings.local.json` still has stale old-path entries baked in from the OneDrive
+  location — needs updating to `C:\witi-project` (carried over from §13/§12).
+- WITI-runtime isolation (attacker = arbitrary internet input via vulns A–H) remains fully
+  deferred to the A–H remediation track (carried over from §13).
+- A+B chain-exploit re-run against the patched `main.py` (carried over from
+  §13/§12/§11/§10/§9/§8).
+- The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
+- C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
+  from §13/§12/§11/§10/§9/§8).

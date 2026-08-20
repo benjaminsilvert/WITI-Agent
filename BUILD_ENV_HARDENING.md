@@ -193,7 +193,8 @@ to specific `git`, Python, and PowerShell invocations, none of which touch `curl
 settings file — so no existing workflow is affected.
 
 ## Layer 2 — OS / process identity
-**Implemented and verified (half 1: 2026-08-19, half 2: 2026-08-20).**
+**Implemented and verified end-to-end against a live agent (half 1: 2026-08-19, half 2:
+2026-08-20).**
 
 **Motivated by Findings 3 and 4.** Finding 3 showed a tool-scoped Layer 1 rule cannot cover
 the agent's own permission-write path. Finding 4 showed *why the target boundary is identity,
@@ -240,6 +241,37 @@ could simply stop calling `check_policy` or read a different prompt file — so 
 set secures the *config* but not the *code path that consults it*. Revisit whether `main.py`
 should also be locked once the A–H patch work is complete and no further edits to it are
 expected.
+
+### Verified end-to-end against a live agent (2026-08-20)
+
+The runas probes above confirmed the ACLs hold for a manual OS-level attempt. The stronger test
+is whether they hold against the actual thing Layer 2 exists to contain: Claude Code itself,
+running as `witi-agent`.
+
+A fully separate, isolated Claude Code install was set up under the restricted `witi-agent`
+Windows account — its own binary at `C:\Users\witi-agent\.local\bin\claude.exe`, its own
+`~/.claude` config/auth directory, sharing nothing with `silve`'s install. It authenticated
+independently (its own fresh login, per Layer 2's identity-separation design).
+
+Running as `witi-agent`, that Claude Code instance:
+- attempted to **write** `tool_policy.json` and was refused by the OS (`EPERM` /
+  `UnauthorizedAccessException`) — a filesystem-level rejection, not a tool-permission prompt.
+- attempted to **read** `.env` and was refused the same way (`EPERM`).
+
+Both refusals happened at the OS layer, before any Claude Code tool-permission logic was even
+in play — the same "verify at the enforcement layer, not the narration" discipline as Finding 2,
+except this time the enforcement layer is the one under test, not the claim. Notably, the model
+also independently declined to attempt a bypass — but per this document's recurring thesis, that
+is defense-in-depth, not the load-bearing control; the OS refusal is what actually holds if the
+model's judgment ever didn't.
+
+**This closes the Findings 3/4 gap at the enforcement layer.** Finding 3 showed a tool-scoped
+Layer 1 rule couldn't cover Claude Code's own permission-write path; Finding 4 showed the real
+boundary was identity, not tool names. This test proves that boundary now holds for an actual
+Claude Code process, not just a `runas` probe: the block is keyed to *who the process is*
+(`witi-agent`'s OS identity), so it doesn't matter which internal mechanism that Claude Code
+instance might use to attempt the write or read — allow-list, permission-write path, or anything
+else not yet enumerated. That is the property Layer 1's per-tool rules could never deliver.
 
 ## Layer 3 — Sandbox / container
 Not yet implemented.
