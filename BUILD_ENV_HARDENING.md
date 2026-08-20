@@ -277,4 +277,33 @@ else not yet enumerated. That is the property Layer 1's per-tool rules could nev
 Not yet implemented.
 
 ## Layer 4 — Network egress
-Not yet implemented.
+**Scoped; finding documented, implementation deferred to Layer 3 (2026-08-20).**
+
+**Goal:** bind network egress to the `witi-agent` OS identity — default-deny outbound, with an
+allow-list limited to Anthropic's API/auth endpoints — mirroring the per-identity file control
+Layer 2 already achieves for the filesystem.
+
+**Finding: not achievable with the host Windows Firewall.** Windows Firewall's outbound rules
+filter by program, port, or remote address — there is no per-user-account scoping for outbound
+traffic. The "Users" tab that *does* exist on a rule is available only on **inbound** rules, and
+only when the rule requires authenticated **IPsec** — it does not extend to outbound egress
+filtering at all. Verified directly against Microsoft's own Windows Firewall with Advanced
+Security documentation, not inferred from the UI.
+
+**Implication:** per-identity egress control can't live at the host-firewall layer on Windows.
+It has to be enforced at the **sandbox/VM layer (Layer 3)** instead — an environment where
+`witi-agent` runs with its own network stack, which can be controlled wholesale rather than
+filtered after the fact by account.
+
+**A host-wide default-deny + program allow-list was considered and rejected.** It's technically
+possible (block all outbound by default, allow only `claude.exe` or similar by program path),
+but it's the wrong shape for this threat model on two counts: it's **machine-wide** — it would
+constrain `silve`'s traffic too, not just the agent's — and it's **program-scoped, not
+identity-scoped** — it controls *what ran the request*, not *who ran it*, which is exactly the
+distinction Layer 2 already had to make (Finding 3: a rule bound to a named tool doesn't bind to
+an actor).
+
+**Same shape as Findings 1–4.** A control that binds to a named thing — a tool, a program, a
+command — fails to bind to identity; the durable fix is controlling the environment the identity
+runs *in*, not enumerating what runs inside it. This is why Layer 4 pairs naturally with Layer 3
+and is deferred to the sandbox session rather than solved piecemeal on the host.

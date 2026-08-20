@@ -624,10 +624,25 @@ content or `prompts/system.md` content.
   around — proven against the actual mechanism (a real Claude Code process), not a stand-in.
 - Full detail recorded in `BUILD_ENV_HARDENING.md`, Layer 2 section (status line updated to
   "Implemented and verified end-to-end against a live agent").
+- **Layer 4 (network egress) scoped, finding documented.** Goal was per-identity outbound
+  control for `witi-agent` (default-deny, allow-list Anthropic's API/auth endpoints only),
+  mirroring Layer 2's per-identity file control. Finding: the host Windows Firewall cannot scope
+  outbound rules by OS account — outbound filters only by program/port/address, and the
+  per-user "Users" tab exists only on inbound rules under authenticated IPsec (verified against
+  Microsoft's own firewall documentation). A host-wide default-deny + program allow-list was
+  considered and rejected — it's machine-wide (would constrain `silve`'s traffic too) and
+  program-scoped rather than identity-scoped, the same "bound to a named thing, not an actor"
+  failure shape as Findings 1–4. Per-identity egress control is therefore deferred to the
+  sandbox/VM layer (Layer 3), where the agent's own network stack can be controlled wholesale.
+  Full detail in `BUILD_ENV_HARDENING.md`, Layer 4 section.
 
 **Pending going into next session:**
 - `.claude/settings.local.json` still has stale old-path entries baked in from the OneDrive
   location — needs updating to `C:\witi-project` (carried over from §13/§12).
+- **Layer 3 (sandbox/VM), now bundled with Layer 4:** stand up the sandbox/VM environment for
+  `witi-agent` *and* implement per-identity network egress control inside it (default-deny
+  outbound, allow-list Anthropic's API/auth endpoints only) — Layer 4's finding means this can't
+  be solved on the host, so the two are now one piece of work, not two.
 - WITI-runtime isolation (attacker = arbitrary internet input via vulns A–H) remains fully
   deferred to the A–H remediation track (carried over from §13).
 - A+B chain-exploit re-run against the patched `main.py` (carried over from
