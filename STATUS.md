@@ -650,3 +650,47 @@ content or `prompts/system.md` content.
 - The three `LEARNING_BACKLOG.md` questions on the tool-policy engine, unanswered.
 - C/H sinks (`append_memory`, `update_tracker`, `read_inbox`) still unpatched (carried over
   from §13/§12/§11/§10/§9/§8).
+
+---
+
+## 15. End-of-session wrap — 2026-08-20
+
+Consolidates the full day: Layer 2 half 2 (§13/§14) and the Layer 4 finding (§14) are recorded
+above; this entry adds what those didn't cover — the A–H patching model, the next patch target,
+and session housekeeping.
+
+- **A–H patch status confirmed from live code.** A and B remain patched via the shared policy
+  engine (`fetch_url` host allow-list; `send_digest` recipient pinned to `$OWNER_EMAIL`). C, D,
+  E, F, G, H remain v1/unpatched — confirmed by reading current `main.py`, not assumed from
+  memory.
+- **Config-vs-function patching model established.** `tool_policy.json` (via `check_policy`)
+  can only inspect tool-call *argument values* — so value-shaped threats are config-patchable
+  (A: host; B: recipient). Threats that are a function's *behavior* (C: `update_tracker`'s
+  wholesale overwrite; H: `read_inbox`'s unwrapped output) or that live *in the data* rather
+  than the arguments (E: a note's sensitivity) require code changes inside `main.py` itself.
+  One-liner: config controls what the model supplies as input; function code controls how the
+  tool behaves and what's in the data it touches. The strongest patches do both.
+- **Next patch target identified: C.** Make `update_tracker` append-only (no wholesale
+  overwrite) and add bounds/sanitization/provenance tagging to `append_memory`. Not yet
+  implemented — this is the starting point for the next build session.
+- **Housekeeping:** changed the `witi-agent` account password via an elevated `net user
+  witi-agent *` (a normal, non-elevated terminal hit "System error 5, Access denied" under
+  UAC — expected, not a bug). Deferred deleting the old OneDrive `files` folder: OneDrive kept
+  re-locking it mid-delete ("you need permission," which was masking a file lock, not a real
+  permission gap) — pure redundancy at this point (the project lives in `C:\witi-project` +
+  GitHub), so deferred to a future reboot-then-delete; no risk in leaving it for now.
+
+**Pending going into next session:**
+- Implement the C patch (append-only `update_tracker` + bounded/sanitized/provenance-tagged
+  `append_memory`), then E (sensitivity tagging in `search_notes`) and H (wrap `read_inbox`
+  output as untrusted).
+- F (remove the planted secret from `prompts/system.md`) and D/G (deterministic approval gate,
+  capability separation by phase) remain open — no work started.
+- The sandbox/VM session: stands up Layer 3 *and* implements per-identity network egress inside
+  it per Layer 4's finding (carried over from §14).
+- `.claude/settings.local.json` still has stale old-path entries from the OneDrive location —
+  needs updating to `C:\witi-project` (carried over from §14/§13/§12).
+- Delete the old OneDrive `files` folder after a reboot clears the file lock.
+- A+B chain-exploit re-run against the patched `main.py` (carried over from
+  §14/§13/§12/§11/§10/§9/§8).
+- The three `LEARNING_BACKLOG.md` tool-policy-engine questions, unanswered.
