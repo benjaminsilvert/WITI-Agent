@@ -694,3 +694,44 @@ and session housekeeping.
 - A+B chain-exploit re-run against the patched `main.py` (carried over from
   §14/§13/§12/§11/§10/§9/§8).
 - The three `LEARNING_BACKLOG.md` tool-policy-engine questions, unanswered.
+
+---
+
+## 16. Session log — 2026-08-26 — Layer 3 build begun: both lab VMs created (network wiring still pending)
+
+Kicked off Layer 3 (sandbox/VM) proper. Confirmed the design, enabled Hyper-V, and stood up both VMs of the two-VM gateway topology. No firewall/egress rules exist yet — that's the next session. Nothing in the WITI agent code (main.py/tool_policy.json/prompts/system.md) was touched; this is all build-environment (Layer 3) work.
+
+Design locked (from BUILD_ENV_HARDENING.md Layer 3/4):
+
+Native sandboxing = Hyper-V (not Windows Sandbox — Sandbox is disposable and can't do granular egress; both are dealbreakers).
+Two-VM gateway topology: a dual-homed gateway VM is the only path to the internet; the builder VM (Claude Code host) connects only to a private lab switch and has no direct internet. Egress control lives on the gateway — outside the builder, so the builder can't alter it.
+Debian for the gateway (leanest/quietest), Ubuntu Server for the builder (most familiar, freshest tooling for Node/Claude Code). Firewall to be hand-written nftables, not a GUI appliance (learning + legibility).
+
+Done this session:
+
+Hyper-V enabled and verified running (Get-WindowsOptionalFeature → Enabled; vmms service Running).
+Both ISOs downloaded from official sources and SHA256-verified against published checksums (Debian 13.6.0 netinst; Ubuntu 26.04 live-server). Verified-good ISOs kept in Downloads; stray partial deleted.
+witi-gateway (Debian 13) built and configured: Gen 2, 1 GB RAM, 20 GB dynamic disk, Secure Boot disabled (Debian bootloader not signed for the default template — accepted tradeoff on a disposable, host-internal, rebuild-from-ISO VM). Lean install (SSH + standard utils only, no desktop). Installed sudo and added gwadmin to the sudo group (Debian doesn't install sudo when a root password is set). Patched current. Current interface: eth0, dynamic 172.24.x.x off the Default Switch (single-homed for now).
+witi-builder (Ubuntu Server 26.04) built and configured: Gen 2, Secure Boot kept on via the "Microsoft UEFI Certificate Authority" template (Ubuntu's bootloader is signed — free integrity check, unlike Debian). 40 GB dynamic disk, LVM on, no LUKS. OpenSSH server installed at setup. sudo works out of the box (Ubuntu default). Patched current. Identity: user builderadmin / host witi-builder. Current interface: eth0, dynamic 172.24.x.x off the Default Switch (single-homed for now).
+Install was interrupted twice (see lessons learned) before completing cleanly; both VMs now boot to a login prompt and are healthy.
+
+Host constraint discovered — memory budget: running the builder left only ~2 GB free on the host (destabilizing installs); ~5.6–6 GB free with all VMs off. The final topology needs both VMs on at once, so Dynamic Memory must be right-sized: gateway ~512 MB floor, builder ~1.5–2 GB floor / ~3 GB ceiling, giving RAM back when idle. (Full host total still to be confirmed.)
+
+Pending going into next session — the network-wiring phase (do in this order):
+
+Create a private virtual switch (Internal/Private, no internet) — the "lab switch."
+Add a second NIC to witi-gateway on that switch (make it dual-homed: eth0 internet side, eth1 lab side).
+Assign static IPs on the private range (e.g. gateway lab-side .1, builder .2) — also what makes SSH-from-PowerShell stable.
+Rewire witi-builder onto the private switch only (remove its Default Switch NIC — no direct internet).
+Enable IP forwarding/routing on the gateway so the builder reaches the internet through it.
+Then write the nftables egress rules on the gateway: default-deny outbound, allow only Anthropic's API/auth endpoints (this is Layer 4's per-identity egress, deferred here from the host-firewall finding).
+Do 1–5 to get a working routed setup and prove it, then add 6 — debug routing and firewall as separate steps.
+Decision to make next session: set up SSH-from-PowerShell right after step 3 (recommended — gives copy-paste and makes steps 4–6 far nicer) vs. pushing through in the console.
+
+Carried over from prior sessions (still open, untouched this session):
+
+.claude/settings.local.json still has stale OneDrive-path entries — update to C:\witi-project.
+WITI-runtime isolation (attacker = internet input via A–H) still deferred to the A–H remediation track.
+A+B chain-exploit re-run against the patched main.py.
+The three LEARNING_BACKLOG.md tool-policy-engine questions, unanswered.
+C/D/E/F/G/H sinks still unpatched (this session was build-env only, not agent-code).
