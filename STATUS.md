@@ -697,7 +697,7 @@ and session housekeeping.
 
 ---
 
-## Session log — 2026-08-26 — Layer 3 build begun: both lab VMs created (network wiring still pending)
+## 16. Session log — 2026-08-26 — Layer 3 build begun: both lab VMs created (network wiring still pending)
 
 Kicked off Layer 3 (sandbox/VM) proper. Confirmed the design, enabled Hyper-V, and stood up
 both VMs of the two-VM gateway topology. No firewall/egress rules exist yet — that's the next
