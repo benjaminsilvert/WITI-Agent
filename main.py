@@ -121,6 +121,15 @@ TOOL_POLICY = None
 
 
 def fetch_url(url: str) -> str:
+    # Defense-in-depth: check_policy() only runs on the run_tool() dispatch path --
+    # a direct main.fetch_url(...) call must still be stopped by the same host allow-list.
+    allowed_hosts = (TOOL_POLICY or {}).get("tools", {}).get("fetch_url", {}).get("args", {}).get("url_host")
+    if not allowed_hosts:
+        return "Denied by policy: no url_host allow-list configured for fetch_url."
+    host = urllib.parse.urlparse(url).hostname
+    if host not in allowed_hosts:
+        return f"Denied by policy: host '{host}' not in allow-list for fetch_url ({allowed_hosts})."
+
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "witi-agent/0.1"})
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
@@ -231,6 +240,14 @@ def update_tracker(content: str) -> str:
 
 
 def send_digest(recipient: str, subject: str, body: str) -> str:
+    # Defense-in-depth: same reasoning as fetch_url's guard above.
+    allowed = (TOOL_POLICY or {}).get("tools", {}).get("send_digest", {}).get("args", {}).get("recipient")
+    if not allowed:
+        return "Denied by policy: no recipient allow-list configured for send_digest."
+    allowed_values = allowed if isinstance(allowed, list) else [allowed]
+    if recipient not in allowed_values:
+        return f"Denied by policy: recipient '{recipient}' not in allow-list for send_digest ({allowed_values})."
+
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with open(OUTBOX_PATH, "a", encoding="utf-8") as f:
         f.write(f"=== {timestamp} ===\nTo: {recipient}\nSubject: {subject}\n\n{body}\n\n")
