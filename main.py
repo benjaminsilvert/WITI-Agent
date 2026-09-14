@@ -119,6 +119,9 @@ ALL_TOOLS = [
 # Populated once at startup by load_policy(); read by check_policy() on every tool call.
 TOOL_POLICY = None
 
+# The three irreversible actions (writes + a send) -- reads are not gated.
+CONSEQUENTIAL_TOOLS = {"append_memory", "update_tracker", "send_digest"}
+
 
 def fetch_url(url: str) -> str:
     # Defense-in-depth: check_policy() only runs on the run_tool() dispatch path --
@@ -355,6 +358,18 @@ def check_policy(name: str, tool_input: dict) -> tuple[bool, str]:
     return True, "allowed"
 
 
+def request_approval(name: str, tool_input: dict) -> bool:
+    # A deterministic, code-level gate -- not a prompt instruction -- so an injected
+    # instruction can talk the model into requesting a consequential action, but cannot
+    # talk this check into approving it.
+    print(f"\n[APPROVAL REQUIRED] {name}({tool_input})")
+    answer = input("Allow this action? [y/N]: ").strip().lower()
+    if answer == "y":
+        return True
+    print(f"[DENIED BY HUMAN] {name}({tool_input})")
+    return False
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     # Policy check happens before any dispatch -- a denied call never reaches
     # the tool function, no matter what name/args the model sends.
@@ -362,6 +377,9 @@ def run_tool(name: str, tool_input: dict) -> str:
     if not allowed:
         print(f"[POLICY DENY] {name}({tool_input}) -> {reason}")
         return f"Denied by policy: {reason}"
+
+    if name in CONSEQUENTIAL_TOOLS and not request_approval(name, tool_input):
+        return f"Denied by human: {name} was not approved."
 
     if name == "fetch_url":
         return fetch_url(tool_input["url"])
