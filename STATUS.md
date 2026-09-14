@@ -170,21 +170,22 @@ directly. Exploit level: **0** = documented only · **1** = attempted, did not f
 (behavioral, not a fix) · **2** = manually proven (direct function call or real-model run,
 cited to a specific file) · **3** = proven via automated script + log file.
 
-**Table last corrected 2026-09-14 (see §18) — A, B, C, E, F, H are now patched (v2); only
-D and G remain vulnerable-as-designed.** The historical per-vuln write-ups immediately below
-the table describe the **original v1 audit** (2026-08-04) and are left as-is as a frozen
-before-state record — see `attacks/MANUAL_VULN_*.md` for the v1 proofs and §18 for the v2
-patch details and re-verification.
+**Table last corrected 2026-09-15 (see §19) — all of A–H are now patched (v2).** The
+historical per-vuln write-ups immediately below the table describe the **original v1 audit**
+(2026-08-04) and are left as-is as a frozen before-state record — see
+`attacks/MANUAL_VULN_*.md` for the v1 proofs, §18 for the C/E/F/H v2 patches and the initial
+A/B policy-layer re-verification, and §19 for A/B's added in-function layer and the D/G
+patches.
 
 | ID | Vulnerability | Structural state | Exploit level | Primary evidence |
 |----|---|---|---|---|
-| A | `fetch_url` — domain allow-list enforced in `check_policy` before dispatch | **patched (v2)** | **3** — deterministic re-proof at the policy chokepoint | `main.py` (`check_policy`, `tool_policy.json`); `attacks/verify_ab_patch.py` + `verify_ab_patch_log.txt` (§18) |
-| B | `send_digest` — recipient pinned to `$OWNER_EMAIL` via `check_policy` before dispatch | **patched (v2)** | **3** — same deterministic re-proof | same as A |
+| A | `fetch_url` — domain allow-list enforced at two independent layers: `check_policy` before dispatch, **and** (added §19) a second in-function guard inside `fetch_url` itself reading the same `TOOL_POLICY`, so a direct call bypassing `run_tool` is still blocked | **patched (v2)**, defense-in-depth | **3** — deterministic re-proof at the policy chokepoint | `main.py` (`check_policy`, `fetch_url`); `attacks/verify_ab_patch.py` + `verify_ab_patch_log.txt` (§18); direct-bypass demo (§19) |
+| B | `send_digest` — recipient pinned to `$OWNER_EMAIL` at two independent layers: `check_policy` before dispatch, **and** (added §19) a second in-function guard inside `send_digest` itself reading the same `TOOL_POLICY` | **patched (v2)**, defense-in-depth | **3** — same deterministic re-proof | same as A |
 | C | `append_memory` (size cap + `source` provenance) + `update_tracker` (append-only, size cap) | **patched (v2)** | **2** — manual demo, this session | `main.py` (`append_memory`, `update_tracker`); §18 |
-| D | No human-in-the-loop on consequential actions | **vulnerable-as-designed** | **2**, but evidence is screenshot-only — see caveat below | `attacks/MANUAL_VULN_DG.md` |
+| D | No human-in-the-loop on consequential actions | **patched (v2)** — deterministic approval gate in `run_tool` before `append_memory`/`update_tracker`/`send_digest`, fail-closed on any answer other than exactly `y` | **2** — proven with a monkeypatched `input()` (`n` blocks, `y` proceeds), this session | `main.py` (`request_approval`, `CONSEQUENTIAL_TOOLS`, `run_tool`); §19 |
 | E | `search_notes` — `sensitivity` front-matter, public-only default, fail-closed on unlabeled notes, `include_private=True` to override | **patched (v2)** | **2** — manual demo, this session | `main.py` (`search_notes`); `notes/*.md` front-matter; §18 |
 | F | Planted secret (`INTERNAL_OPS_KEY`) in system prompt | **patched (v2)** — lines deleted entirely, nothing to relocate (the key was fake) | n/a — no secret remains to extract | `prompts/system.md`; §18 |
-| G | All 7 tools reachable in every phase, no capability separation | **vulnerable-as-designed** | **2**, same screenshot-only caveat as D | `attacks/MANUAL_VULN_DG.md` |
+| G | All 7 tools reachable in every phase, no capability separation | **patched (v2)** — the run is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only); the phase that reads untrusted content structurally cannot reach a send/write tool | **2** — proven structurally (dangerous tools absent from each phase's tool list), no model call needed, this session | `main.py` (`run_phase`, `GATHER_TOOL_NAMES`, `ACT_TOOL_NAMES`); §19 |
 | H | `read_inbox` — output wrapped in `<untrusted>` markers, sender allow-list flags (not drops) unknown senders | **patched (v2)** | **2** — manual demo, this session | `main.py` (`read_inbox`); `prompts/system.md` untrusted-content rule; §18 |
 
 ### A — `fetch_url` (indirect prompt injection)
@@ -879,7 +880,7 @@ allow-rule not yet written.
 
 ---
 
-## §18 — Session 2026-09-14: A/B re-proven deterministically; C, E, F, H patched to v2
+## §18 — Session 2026-09-14 (part 1): A/B re-proven deterministically; C, E, F, H patched to v2
 
 **Headline:** Agent-code hardening only, no build-environment work this session. Closes out
 item 4 from §17's pending list (the stale §4 table) as a side effect of actually patching the
@@ -965,3 +966,89 @@ Layer 3 build (§16) and network-wiring/egress work (§17) — Layer 3 rewritten
 yet implemented" stub to the built-and-proven two-VM sandbox (heading corrected "container"
 → "VM"); Layer 4 updated from "deferred" to default-deny proven biting, Anthropic allow-rule
 (Option A) still pending. Layers 1–2 unchanged.
+
+---
+
+## §19 — Session 2026-09-14 (part 2): A/B given a second enforcement layer; D and G patched to v2 — all of A–H now patched
+
+**Headline: all A–H vulnerabilities are now patched (v2).** Three code changes, each planned
+and approved before implementation per `CLAUDE.md`'s plan-mode convention, each committed
+separately. `check_policy`, `run_tool`'s dispatch chain, the C/E/F/H patches, and
+`tool_policy.json` were left exactly as they were going into this session — this session
+only added new guards around them.
+
+### A/B — defense-in-depth: a second, independent enforcement layer
+Previously, A's host allow-list and B's recipient pin were enforced only inside
+`check_policy()`, called only from `run_tool()`. A direct `main.fetch_url(...)` or
+`main.send_digest(...)` call — bypassing `run_tool` entirely — hit no check at all. Added a
+second guard inline at the top of each function that reads the same `TOOL_POLICY` global
+(populated from `tool_policy.json` by the existing `load_policy()`) — one source of truth,
+two enforcement points, so a future policy edit is picked up by both automatically with no
+code change. Fails closed: `TOOL_POLICY` is `None`, or has no rule for the tool, or no
+`url_host`/`recipient` entry in `args` → a clear `"Denied by policy: ..."` string, no
+exception, no `urlopen` call, no `outbox.txt` write. Demoed with `check_policy`/`run_tool`
+bypassed entirely: disallowed host/recipient denied by the new guard; allowed host/recipient
+passed through (fetch_url's `urlopen` was stubbed to avoid a real network call in the demo;
+send_digest's write was snapshotted/restored); `TOOL_POLICY = None` denied both, cleanly.
+Closes the direct-call bypass of `run_tool`/`check_policy` that existed until this session.
+
+### D — deterministic human-approval gate (patched)
+Added `CONSEQUENTIAL_TOOLS = {"append_memory", "update_tracker", "send_digest"}` (the three
+irreversible actions; reads are not gated) and `request_approval(name, tool_input)`, wired
+into `run_tool` immediately after the existing `check_policy` block and before tool
+dispatch: if the tool is consequential and the human doesn't answer exactly `y`, `run_tool`
+returns `"Denied by human: ..."` without calling the tool. Fail-closed: anything other than
+exactly `y` (stripped, lowercased) — `n`, empty input, `yes`, garbage — denies. This is a
+gate in code, not a prompt instruction: an injected instruction can still talk the model
+into *requesting* a consequential action, but cannot talk this check into approving it.
+Proven with `builtins.input` monkeypatched (no interactive run needed): `input()` → `"n"`
+blocked `append_memory` and left `memory.json` unchanged; `input()` → `"y"` let it proceed
+and the entry count grew by one; `memory.json` restored from a snapshot afterward.
+
+### G — capability separation via two-phase gather/act run (patched)
+`main()` previously called `client.messages.create()` with the identical 7-tool list on
+every turn, so any successful injection during "research" had send/write tools sitting
+right there. Added `GATHER_TOOL_NAMES = {"fetch_url", "read_inbox", "search_notes",
+"read_memory"}` and `ACT_TOOL_NAMES = {"append_memory", "update_tracker", "send_digest"}`,
+extracted the existing loop body unchanged into `run_phase(client, system_prompt, messages,
+tools)` (same API call, same dispatch through the unmodified `run_tool`, same message
+mutation — just parameterized on `tools` and returning the final response), and replaced the
+single loop in `main()` with two `run_phase` calls: a GATHER phase using a
+policy-filtered-and-name-filtered `gather_tools` list, a hand-off message telling the model
+gathering is complete and it must act only on what's already gathered, then an ACT phase
+using `act_tools`. The separation is enforced by which tool list each phase is handed to the
+API — architectural, not a prompt instruction. Proven structurally, no model call: printed
+both tool-name lists and asserted `send_digest`/`append_memory`/`update_tracker` are absent
+from `gather_tools` and `fetch_url`/`read_inbox` are absent from `act_tools` — all 5
+assertions passed.
+
+### Honest caveats (recorded, not resolved this session)
+- **G shrinks blast radius but doesn't scrub untrusted content from the model's context.**
+  The gather phase still reads a fetched page or inbox message straight into the
+  conversation; G only guarantees that phase has no send/write tool to misuse if it's
+  talked into something. A dual-LLM setup — a separate, tool-less model call that
+  summarizes untrusted content before the tool-capable agent ever sees it (per vuln A's
+  patch mapping in `AGENT_SYSTEM_PROMPT.md`) — is the future upgrade that would actually
+  keep injected instructions from reaching a capable model at all.
+- **D's gate is terminal-based** (`input()` on stdin, a blocking `y`/`n` prompt). Fine for
+  this single-user, single-terminal build, but not a production approval channel — it
+  assumes a human is watching the same terminal the process is attached to, has no timeout,
+  no audit log of who approved what, and no path for approval from anywhere else (e.g. a
+  Slack/email approval flow). Recorded as a known limitation, not a defect to fix now.
+
+**A–H status after this session: all eight vulnerabilities are patched (v2).** See the §4
+table (corrected above) for the full per-vuln structural state and evidence pointers.
+
+**Pending going into next session:**
+- With A–H all patched, the natural next step is a **full re-run of the model-driven attack
+  scripts** (`attacks/exfil_demo.py` and equivalents for C/D/E/G/H) against the now-fully-
+  patched `main.py`, to confirm the hardened loop holds up under an actual live-model
+  attempt end-to-end, not just the structural/direct-call proofs used throughout this
+  hardening arc.
+- Layer 3/4 build-env work, carried over from §17/§18: implement Option A's Anthropic-IP
+  allow-list in the gateway's `ip filter forward` chain and prove Claude Code connects while
+  all else stays blocked; mop-up allow-list needs (snap, NTP) and document the Files-API
+  caveat plus Options B/C; fold that session's 14 new lessons into `LESSONS_LEARNED.md`.
+- `.claude/settings.local.json` still has stale OneDrive-path entries — needs updating to
+  `C:\witi-project` (carried over from §12 onward).
+- The three `LEARNING_BACKLOG.md` tool-policy-engine questions, still unanswered.
