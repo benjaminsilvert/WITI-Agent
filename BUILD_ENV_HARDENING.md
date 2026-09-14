@@ -273,37 +273,55 @@ Claude Code process, not just a `runas` probe: the block is keyed to *who the pr
 instance might use to attempt the write or read — allow-list, permission-write path, or anything
 else not yet enumerated. That is the property Layer 1's per-tool rules could never deliver.
 
-## Layer 3 — Sandbox / container
-Not yet implemented.
+## Layer 3 — Sandbox / VM
+
+Substantially implemented: two-VM sandbox built, network wired, builder isolation proven (begun 2026-08-26 §16, wired 2026-08-28 §17). Egress lock-down in progress — see Layer 4.
+
+Why a VM, and why now. Layers 1 and 2 bound the builder identity on the host — its filesystem access and its per-tool permissions. Layer 3 gives that identity its own machine, so its entire network stack can be controlled wholesale rather than filtered after the fact by account. This is precisely the environment Layer 4's finding (below) concluded was required: per-identity egress control cannot be done on the host, so it moves here.
+
+Native sandbox choice: Hyper-V, not Windows Sandbox. Windows Sandbox is disposable (state is discarded on close) and exposes no granular egress control — both disqualifying for a persistent build environment that needs a real, durable firewall. Hyper-V gives persistent VMs and full control of the virtual network.
+
+Two-VM gateway topology. Two VMs, not one:
+
+a gateway VM (Debian 13, leanest/quietest) — dual-homed, and the only path to the internet;
+a builder VM (Ubuntu Server 26.04, freshest tooling for Node/Claude Code) — the Claude Code host, connected only to a private lab switch, with no direct internet route of its own.
+
+The load-bearing property: egress control lives on the gateway, outside the builder. A compromised builder cannot alter the rules that contain it, because those rules run on a different machine it has no privileged access to. This is the same shape as Layer 2's identity boundary — the control sits where the contained thing can't reach it — carried up from the filesystem to the network. The firewall is hand-written nftables rather than a GUI appliance, chosen for legibility and learning value.
+
+Build (per STATUS §16, 2026-08-26). Hyper-V enabled and verified running. Both install ISOs downloaded from official sources and SHA256-verified against published checksums (Debian 13.6.0 netinst; Ubuntu 26.04 live-server) — a supply-chain check on the base images before anything was built on them. Both VMs built as Gen 2 (gateway with Secure Boot disabled — Debian's bootloader isn't signed for the default template, an accepted tradeoff on a disposable, host-internal, rebuild-from-ISO VM; builder with Secure Boot kept on via the Microsoft UEFI CA template, since Ubuntu's bootloader is signed). Lean installs, SSH only, no desktop.
+
+Network wiring (per STATUS §17, 2026-08-28) — isolation and routing PROVEN. Lab network 10.10.10.0/24; gateway lab-side 10.10.10.1, builder 10.10.10.2.
+
+Private switch witi-lab (Hyper-V Private type — the host is deliberately not on it, so there is no accidental second egress path).
+Gateway dual-homed: eth0 on the Default Switch (internet side), eth1 on witi-lab (lab side). (A Debian 13 gotcha was resolved en route — dhclient was removed from the distro, so eth0 was migrated to systemd-networkd DHCP.)
+Builder isolated onto the lab: its NIC was moved onto witi-lab only, cutting its direct internet (as intended); it is now reachable only via the gateway acting as a jump-host / bastion, or the Hyper-V console.
+Routing + NAT proven: IP forwarding enabled and persistent on the gateway; NAT masquerade in nftables. Verified by the builder reaching 8.8.8.8 through the gateway (ping → replies) — routing and NAT working together, with the builder holding no internet route of its own.
+
+Same thesis as Findings 1–4. A control bound to a named thing (a tool, a command, a program) fails to bind to an identity or an environment. Layer 3's answer is to control the environment the builder identity runs in — its whole network path — rather than enumerating what it might run. That is the durable form of the fix Layer 4's host-firewall finding pointed toward.
 
 ## Layer 4 — Network egress
-**Scoped; finding documented, implementation deferred to Layer 3 (2026-08-20).**
 
-**Goal:** bind network egress to the `witi-agent` OS identity — default-deny outbound, with an
-allow-list limited to Anthropic's API/auth endpoints — mirroring the per-identity file control
-Layer 2 already achieves for the filesystem.
+Host-firewall approach ruled out (2026-08-20); egress control now being enforced inside Layer 3. Default-deny in place and PROVEN biting; Anthropic allow-rule chosen but NOT yet implemented (2026-08-28 §17).
 
-**Finding: not achievable with the host Windows Firewall.** Windows Firewall's outbound rules
-filter by program, port, or remote address — there is no per-user-account scoping for outbound
-traffic. The "Users" tab that *does* exist on a rule is available only on **inbound** rules, and
-only when the rule requires authenticated **IPsec** — it does not extend to outbound egress
-filtering at all. Verified directly against Microsoft's own Windows Firewall with Advanced
-Security documentation, not inferred from the UI.
+Goal (unchanged): default-deny outbound for the builder, with an allow-list limited to Anthropic's API/auth endpoints — mirroring the per-identity file control Layer 2 achieves for the filesystem.
 
-**Implication:** per-identity egress control can't live at the host-firewall layer on Windows.
-It has to be enforced at the **sandbox/VM layer (Layer 3)** instead — an environment where
-`witi-agent` runs with its own network stack, which can be controlled wholesale rather than
-filtered after the fact by account.
+Finding: not achievable with the host Windows Firewall (still valid). Windows Firewall's outbound rules filter by program, port, or remote address — there is no per-user-account scoping for outbound traffic. The "Users" tab that does exist applies only to inbound rules under authenticated IPsec, not to outbound egress. A host-wide default-deny + program allow-list was considered and rejected: it is machine-wide (would constrain silve's traffic too) and program-scoped, not identity-scoped — the same "bound to a named thing, not an actor" failure shape as Findings 1–4. Per-identity egress therefore had to move to the sandbox/VM layer, where the builder has its own network stack. This is now what Layer 3 implements.
 
-**A host-wide default-deny + program allow-list was considered and rejected.** It's technically
-possible (block all outbound by default, allow only `claude.exe` or similar by program path),
-but it's the wrong shape for this threat model on two counts: it's **machine-wide** — it would
-constrain `silve`'s traffic too, not just the agent's — and it's **program-scoped, not
-identity-scoped** — it controls *what ran the request*, not *who ran it*, which is exactly the
-distinction Layer 2 already had to make (Finding 3: a rule bound to a named tool doesn't bind to
-an actor).
+Implementation status (per STATUS §17):
 
-**Same shape as Findings 1–4.** A control that binds to a named thing — a tool, a program, a
-command — fails to bind to identity; the durable fix is controlling the environment the identity
-runs *in*, not enumerating what runs inside it. This is why Layer 4 pairs naturally with Layer 3
-and is deferred to the sandbox session rather than solved piecemeal on the host.
+Default-deny forward chain — in place and proven. On the gateway, nftables table ip filter → chain forward set to policy drop, allowing only ct state established,related plus DNS to 1.1.1.1 / 8.8.8.8. An ip6 filter forward drop was added alongside it to close the IPv6 bypass — an IPv4-only firewall leaves v6 wide open.
+Proven biting, at the enforcement layer, not by reading the ruleset: from the builder, ping 8.8.8.8 → 100% loss and curl -I https://example.com → timeout, while getent ahostsv4 example.com still resolves. DNS works; connections don't. That contrast is the proof the default-deny is real and not just present in a config file.
+A Hyper-V checkpoint (pre-egress-firewall) was taken before the lock-down, so the pre-firewall state is recoverable.
+
+Current end-state: the builder is presently blocked to everything except DNS. That means the sandbox is in a fully-locked state — Claude Code running on the builder cannot currently reach Anthropic's API through it until the allow-rule below is added. This is the expected intermediate state, not a fault: default-deny was proven first, selective-allow comes second.
+
+Pending — the selective allow-rule (Option A chosen, not yet built):
+
+Approach: a static allow-list of Anthropic's published fixed API IPs, added as an accept rule on tcp/443 to the ip filter forward chain, so the builder can reach the API while all else stays denied.
+Do not hard-code these from memory. Pull Anthropic's current published API IP ranges and required domains from the official documentation at build time; a stale or guessed range would silently break Claude Code or quietly widen the hole.
+Then prove it: Claude Code connects to the API from the builder while every other outbound destination stays blocked — the two-sided (allow the one, deny the rest) proof shape this document uses everywhere.
+
+Honest limits to record alongside the allow-rule (future hardening):
+
+The Files-API caveat. Allow-listing a domain grants access to every function behind it — e.g. allowing api.anthropic.com also reaches Anthropic's own Files API, which is itself an exfiltration channel. An IP/domain allow-list constrains where traffic goes, not what it carries.
+Options B and C, deferred: (B) resolve-allowed-hosts-at-load (the Claude Code devcontainer pattern); (C) a hostname-filtering egress proxy (what Anthropic itself runs). Both are stronger than a static IP list but heavier to stand up; noted as the next rung, not this session's work.

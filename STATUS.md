@@ -959,3 +959,9 @@ separation by phase — see §4/§7 for what each would require).
 - `.claude/settings.local.json` still has stale OneDrive-path entries — needs updating to
   `C:\witi-project` (carried over from §12 onward).
 - The three `LEARNING_BACKLOG.md` tool-policy-engine questions, still unanswered.
+
+**Doc sync (2026-09-14):** Brought `BUILD_ENV_HARDENING.md` Layers 3–4 current with the
+Layer 3 build (§16) and network-wiring/egress work (§17) — Layer 3 rewritten from the "Not
+yet implemented" stub to the built-and-proven two-VM sandbox (heading corrected "container"
+→ "VM"); Layer 4 updated from "deferred" to default-deny proven biting, Anthropic allow-rule
+(Option A) still pending. Layers 1–2 unchanged.
