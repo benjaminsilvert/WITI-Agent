@@ -122,6 +122,10 @@ TOOL_POLICY = None
 # The three irreversible actions (writes + a send) -- reads are not gated.
 CONSEQUENTIAL_TOOLS = {"append_memory", "update_tracker", "send_digest"}
 
+# Capability separation (vuln G): which tools each phase of main() is allowed to see.
+GATHER_TOOL_NAMES = {"fetch_url", "read_inbox", "search_notes", "read_memory"}
+ACT_TOOL_NAMES = {"append_memory", "update_tracker", "send_digest"}
+
 
 def fetch_url(url: str) -> str:
     # Defense-in-depth: check_policy() only runs on the run_tool() dispatch path --
@@ -398,6 +402,34 @@ def run_tool(name: str, tool_input: dict) -> str:
     return f"Unknown tool: {name}"
 
 
+def run_phase(client, system_prompt, messages, tools):
+    # Capability separation (vuln G) is enforced here: each phase only ever sees the
+    # tool list it's called with -- an architectural boundary, not a prompt instruction
+    # the model (or injected content it read) could talk its way around.
+    while True:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=system_prompt,
+            tools=tools,
+            messages=messages,
+        )
+        messages.append({"role": "assistant", "content": response.content})
+
+        if response.stop_reason != "tool_use":
+            return response
+
+        tool_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                print(f"[tool call] {block.name}({block.input})")
+                result = run_tool(block.name, block.input)
+                tool_results.append(
+                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
+                )
+        messages.append({"role": "user", "content": tool_results})
+
+
 def main():
     load_dotenv()
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -411,7 +443,16 @@ def main():
 
     # Only advertise tools the policy allows at all -- a tool the model never
     # sees, it can't call. (Argument-level rules still apply per-call in run_tool.)
-    tools = [t for t in ALL_TOOLS if TOOL_POLICY["tools"].get(t["name"], {}).get("allow")]
+    # Each phase is further restricted to its own tool names (see GATHER_TOOL_NAMES /
+    # ACT_TOOL_NAMES above) -- the gather phase never even sees a send/write tool.
+    gather_tools = [
+        t for t in ALL_TOOLS
+        if TOOL_POLICY["tools"].get(t["name"], {}).get("allow") and t["name"] in GATHER_TOOL_NAMES
+    ]
+    act_tools = [
+        t for t in ALL_TOOLS
+        if TOOL_POLICY["tools"].get(t["name"], {}).get("allow") and t["name"] in ACT_TOOL_NAMES
+    ]
 
     client = Anthropic(api_key=api_key)
     system_prompt = open("prompts/system.md", encoding="utf-8").read()
@@ -433,28 +474,24 @@ def main():
         }
     ]
 
-    while True:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=system_prompt,
-            tools=tools,
-            messages=messages,
-        )
-        messages.append({"role": "assistant", "content": response.content})
+    print("\n=== PHASE 1: GATHER (read-only tools) ===")
+    run_phase(client, system_prompt, messages, gather_tools)
 
-        if response.stop_reason != "tool_use":
-            break
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "Gathering is complete. You now have only action tools available. Act "
+                "solely on the information already gathered above to carry out whatever "
+                "the original request requires (e.g. send the digest, update the "
+                "tracker/memory). Do not ask to fetch or read anything further. If no "
+                "action is needed, just say so."
+            ),
+        }
+    )
 
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                print(f"[tool call] {block.name}({block.input})")
-                result = run_tool(block.name, block.input)
-                tool_results.append(
-                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
-                )
-        messages.append({"role": "user", "content": tool_results})
+    print("\n=== PHASE 2: ACT (send/write tools) ===")
+    response = run_phase(client, system_prompt, messages, act_tools)
 
     digest = "".join(block.text for block in response.content if block.type == "text")
     print("\n--- WITI digest ---\n")
