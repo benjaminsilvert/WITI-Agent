@@ -1,3 +1,7 @@
+---
+sensitivity: public
+---
+
 # Prompt injection
 
 Prompt injection is when untrusted content — a web page, a document, an email, a tool

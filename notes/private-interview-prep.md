@@ -1,3 +1,7 @@
+---
+sensitivity: private
+---
+
 # Private — interview prep notes (not for sharing)
 
 Weak spots to shore up before the upcoming interview:

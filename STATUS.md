@@ -170,16 +170,22 @@ directly. Exploit level: **0** = documented only · **1** = attempted, did not f
 (behavioral, not a fix) · **2** = manually proven (direct function call or real-model run,
 cited to a specific file) · **3** = proven via automated script + log file.
 
+**Table last corrected 2026-09-14 (see §18) — A, B, C, E, F, H are now patched (v2); only
+D and G remain vulnerable-as-designed.** The historical per-vuln write-ups immediately below
+the table describe the **original v1 audit** (2026-08-04) and are left as-is as a frozen
+before-state record — see `attacks/MANUAL_VULN_*.md` for the v1 proofs and §18 for the v2
+patch details and re-verification.
+
 | ID | Vulnerability | Structural state | Exploit level | Primary evidence |
 |----|---|---|---|---|
-| A | `fetch_url` — no domain allow-list, no untrusted-content wrapping | **vulnerable-as-designed** | **2** (manual, structural) + **3-attempted** (automated chain ran but injected instruction wasn't obeyed) | `attacks/MANUAL_VULN_A.md`; `attacks/exfil_demo.py` + its 3 logs |
-| B | `send_digest` — recipient fully caller-controlled, no fixed address/filter | **vulnerable-as-designed** | **2** (manual, structural) ; automated chain attempt = **1** (did not fire) | `attacks/MANUAL_VULN_B.md`; `attacks/exfil_demo_log*.txt` |
-| C | `append_memory` (poison) + `update_tracker` (destroy) — no validation, no backup | **vulnerable-as-designed** | **2** | `attacks/MANUAL_VULN_C.md` |
+| A | `fetch_url` — domain allow-list enforced in `check_policy` before dispatch | **patched (v2)** | **3** — deterministic re-proof at the policy chokepoint | `main.py` (`check_policy`, `tool_policy.json`); `attacks/verify_ab_patch.py` + `verify_ab_patch_log.txt` (§18) |
+| B | `send_digest` — recipient pinned to `$OWNER_EMAIL` via `check_policy` before dispatch | **patched (v2)** | **3** — same deterministic re-proof | same as A |
+| C | `append_memory` (size cap + `source` provenance) + `update_tracker` (append-only, size cap) | **patched (v2)** | **2** — manual demo, this session | `main.py` (`append_memory`, `update_tracker`); §18 |
 | D | No human-in-the-loop on consequential actions | **vulnerable-as-designed** | **2**, but evidence is screenshot-only — see caveat below | `attacks/MANUAL_VULN_DG.md` |
-| E | `search_notes` — no sensitivity/authorization check | **vulnerable-as-designed** | **2** | `attacks/MANUAL_VULN_E.md` |
-| F | Planted secret (`INTERNAL_OPS_KEY`) in system prompt | **vulnerable-as-designed** (secret confirmed present, see below) | **1** (3 attempts, all refused — behavioral, structural vuln persists) | `attacks/MANUAL_VULN_F.md`; `attacks/vuln_f_extract.py` |
+| E | `search_notes` — `sensitivity` front-matter, public-only default, fail-closed on unlabeled notes, `include_private=True` to override | **patched (v2)** | **2** — manual demo, this session | `main.py` (`search_notes`); `notes/*.md` front-matter; §18 |
+| F | Planted secret (`INTERNAL_OPS_KEY`) in system prompt | **patched (v2)** — lines deleted entirely, nothing to relocate (the key was fake) | n/a — no secret remains to extract | `prompts/system.md`; §18 |
 | G | All 7 tools reachable in every phase, no capability separation | **vulnerable-as-designed** | **2**, same screenshot-only caveat as D | `attacks/MANUAL_VULN_DG.md` |
-| H | `read_inbox` — inbound mail returned unwrapped | **vulnerable-as-designed** | **2** | `attacks/MANUAL_VULN_H.md` |
+| H | `read_inbox` — output wrapped in `<untrusted>` markers, sender allow-list flags (not drops) unknown senders | **patched (v2)** | **2** — manual demo, this session | `main.py` (`read_inbox`); `prompts/system.md` untrusted-content rule; §18 |
 
 ### A — `fetch_url` (indirect prompt injection)
 **Structural** `[read file]`: `main.py:107-119` — `urllib.request.urlopen()` is called with
@@ -405,6 +411,20 @@ deny-by-default for unknown tools, but C's and H's sinks (`append_memory`,
 `update_tracker`, `read_inbox`) are all still `allow: true` — not yet patched.
 Verification via re-running the A+B chain exploit against the patched code: still
 pending.
+
+**2026-09-14 update:** A and B re-verified deterministically via a new standalone script,
+`attacks/verify_ab_patch.py`, which arms the real `main.load_policy()`/`main.check_policy()`
+and asserts all four cases (deny attacker recipient, allow owner recipient, deny
+non-allow-listed host, allow `claude.com`) — closing the "verification still pending" gap
+above at the policy-chokepoint level (this is not a re-run of the full model-driven A+B
+chain in `exfil_demo.py`, which remains a separate, still-open item). C, E, and H — the
+sinks called out above as "not yet patched" — are now also patched: `append_memory` and
+`update_tracker` gained a size cap plus append-only/provenance controls; `search_notes`
+gained `sensitivity`-based filtering; `read_inbox` gained `<untrusted>` wrapping and sender
+allow-list flagging. F's planted secret was also deleted from `prompts/system.md`. Full
+detail in §18. **D and G are now the only unpatched items among A–H** — both are properties
+of the loop itself (no deterministic approval gate, no capability separation by phase), not
+of an individual function, and neither has been started.
 
 ---
 
@@ -771,3 +791,171 @@ as separate steps.
 - A+B chain-exploit re-run against the patched `main.py`.
 - The three `LEARNING_BACKLOG.md` tool-policy-engine questions, unanswered.
 - C/D/E/F/G/H sinks still unpatched (this session was build-env only, not agent-code).
+
+--
+
+## §17 — Session 2026-08-28: Layer 3 network wiring (Steps 1–5 done + proven, Step 6 begun)
+
+**Headline:** Built out the two-VM gateway sandbox end to end. Steps 1–5 complete and
+proven (builder now reaches the internet only through the gateway); Step 6 (egress
+lock-down) started — default-deny skeleton in place and proven biting, Anthropic
+allow-rule not yet written.
+
+### Lab network decided
+- Range `10.10.10.0/24`. Gateway lab-side = `10.10.10.1`, builder = `10.10.10.2`.
+
+### Step 1 — private switch
+- Created Hyper-V **Private** virtual switch `witi-lab` (host not on it, by design — no
+  accidental second egress path).
+
+### Step 2 — gateway dual-homed
+- Added a 2nd NIC to `witi-gateway` → `eth1` (on `witi-lab`). `eth0` stays on Default
+  Switch (internet side).
+
+### Gateway internet-side fix (Debian 13 gotcha)
+- `eth0` was stuck on a `169.254` link-local addr: Debian 13 removed `dhclient`, so the
+  ifupdown `eth0 … dhcp` config had no client and failed every boot.
+- Migrated `eth0` to **systemd-networkd** DHCP: `/etc/systemd/network/10-eth0.network`
+  (`DHCP=yes`). Enabled `systemd-networkd`.
+- Commented out the stale `allow-hotplug eth0` / `iface eth0 inet dhcp` lines in
+  `/etc/network/interfaces` (one source of truth).
+- Set up **host→gateway SSH** over the Default Switch address.
+
+### Step 3 — static lab IP on gateway
+- `/etc/systemd/network/20-eth1.network` → `Address=10.10.10.1/24` (no route line; eth1 is
+  the inward lab side). Applied via `networkctl reload` + `reconfigure eth1`.
+
+### Step 4 — builder isolated onto lab
+- Staged builder static `10.10.10.2/24` **additively** in netplan first (kept the 172.x SSH
+  session alive — "don't saw off the branch").
+- Moved builder NIC onto `witi-lab` via `Connect-VMNetworkAdapter -VMName witi-builder
+  -SwitchName 'witi-lab'` (host-side cmd). This cut the builder's direct internet (expected).
+- Finalized builder netplan `/etc/netplan/00-installer-config.yaml`: `dhcp4/6: false`,
+  static `10.10.10.2/24`, `routes: default via 10.10.10.1`, nameservers `1.1.1.1`/`8.8.8.8`.
+- Builder is now single-homed on the lab. Reached only via **gateway jump-host / bastion**
+  (`ssh builderadmin@10.10.10.2` from the gateway) or the Hyper-V console.
+
+### Step 5 — routing + NAT (PROVEN)
+- IP forwarding on + persistent: `/etc/sysctl.d/99-witi-forward.conf`
+  (`net.ipv4.ip_forward=1`), applied with `sysctl --system`.
+- NAT masquerade in `/etc/nftables.conf` (`table ip nat` → `oifname "eth0" masquerade`).
+  `nftables` enabled at boot.
+- **Proof:** builder `ping -c 3 8.8.8.8` → 3 replies (routing + NAT working together).
+
+### Step 6 — egress lock-down (IN PROGRESS)
+- Took Hyper-V checkpoint of the gateway first: **`pre-egress-firewall`**.
+- Added `table ip filter` → `chain forward` `policy drop`, allowing only
+  `ct state established,related` + DNS to `1.1.1.1`/`8.8.8.8` (udp/tcp 53).
+- Added `table ip6 filter` → `chain forward` `policy drop` (no accepts) to **close the IPv6
+  bypass** — an IPv4-only firewall leaves v6 wide open.
+- **Proof it bites:** builder `ping 8.8.8.8` → 100% loss; `curl -I https://example.com` →
+  timeout; but `getent ahostsv4 example.com` → resolves. (DNS works, connections don't.)
+- Chose **Option A** for the Anthropic allow-rule: static allow-list of Anthropic's
+  *published fixed API IPs*. **Not yet implemented.**
+
+### Current end-state
+- **Gateway (`witi-gateway`, Debian):** eth0 DHCP via networkd (internet); eth1 static
+  `10.10.10.1/24` (lab); forwarding on; `/etc/nftables.conf` = nat masquerade + ip filter
+  forward default-deny (established/related + DNS only) + ip6 filter forward drop.
+- **Builder (`witi-builder`, Ubuntu):** lab-only, static `10.10.10.2`, default route via
+  gateway, no direct internet; currently blocked to everything except DNS by the
+  forward-chain default-deny.
+- Checkpoint `pre-egress-firewall` exists.
+
+### Pending / next session
+1. **Implement Option A:** pull Anthropic's *current* published API IP ranges from the
+   official docs (platform.claude.com/docs/en/api/ip-addresses) and required domains
+   (code.claude.com/docs/en/network-config) — do NOT hard-code from memory. Add an accept
+   rule for those IPs on tcp/443 to the `ip filter forward` chain. Prove Claude Code
+   connects while all else stays blocked.
+2. Mop-up: decide what else the allow-list legitimately needs (snap, NTP), and document the
+   honest limits — the **Files-API caveat** (an allow-listed domain grants access to every
+   function behind it; api.anthropic.com allowed exfil via Anthropic's own Files API), and
+   Options B (resolve-at-load, the Claude Code devcontainer pattern) & C (hostname-filtering
+   proxy, what Anthropic itself does) as future hardening.
+3. Fold the 14 new lessons from this session into `LESSONS_LEARNED.md`.
+4. Housekeeping: STATUS.md §4 audit table is **stale** — still lists A/B as vulnerable, but
+   they were patched via the policy engine. Clean up.
+
+---
+
+## §18 — Session 2026-09-14: A/B re-proven deterministically; C, E, F, H patched to v2
+
+**Headline:** Agent-code hardening only, no build-environment work this session. Closes out
+item 4 from §17's pending list (the stale §4 table) as a side effect of actually patching the
+remaining sinks. `main.py`, `prompts/system.md`, and `notes/*.md` were all touched; `tool_policy.json`
+was not.
+
+### A/B — re-proven deterministically at the policy chokepoint
+- New standalone script `attacks/verify_ab_patch.py`: loads `.env`, arms
+  `main.TOOL_POLICY = main.load_policy()`, then calls `main.check_policy()` directly (not the
+  bare tool functions, which would bypass the gate) for four cases — deny attacker recipient,
+  allow owner recipient, deny non-allow-listed host, allow `claude.com`. All four passed.
+  No email send, no `outbox.txt` write, no network request — `check_policy` has no side
+  effects.
+- Output is saved to `attacks/verify_ab_patch_log.txt`, with the real owner email address
+  **scrubbed to `owner@example.com`** in the saved file (the live `check_policy()` calls still
+  exercise the real `$OWNER_EMAIL` — only the text written to the committed log is redacted,
+  since this repo's portfolio is public). Confirmed via grep that the real local-part does not
+  appear anywhere in the log file.
+
+### C — `append_memory` + `update_tracker` patched (excessive agency + persistence)
+- `append_memory`: rejects content over 10,000 chars with a clear error return (no silent
+  truncation); every entry now carries a `source` field (optional param, defaults to
+  `"agent"`) alongside `content`/`timestamp`.
+- `update_tracker`: chose **append-only** over backup-then-overwrite — a single call can no
+  longer destroy tracker history by construction, since there is no overwrite code path left
+  to protect against, rather than relying on a backup step always running. Same 10,000-char
+  cap applied.
+- Demoed against `.bak` snapshots of `memory.json`/`tracker.md`, then restored: oversized
+  append rejected (entry count unchanged), normal append carries the `source` field, tracker
+  write appended a new timestamped section while the prior 34-line history stayed intact byte
+  for byte.
+
+### E — `search_notes` patched (data-layer authorization)
+- Added `sensitivity:` YAML front-matter to all three files in `notes/`:
+  `private-interview-prep.md` → `private`; `idor-and-bola.md` and `prompt-injection-notes.md`
+  → `public`.
+- `search_notes` gained an `include_private: bool = False` parameter and now filters by the
+  note's front-matter: public-only by default, and **fail-closed** — a note with no
+  front-matter at all (tested with a temp unlabeled note, removed after) is treated as
+  private, not public. `run_tool()`'s existing dispatch (`search_notes(tool_input["query"])`)
+  was left unmodified and stays safe automatically, since it never passes `include_private`.
+
+### F — planted secret removed
+- Deleted the two `# v1 ONLY — planted secret...` / `# INTERNAL_OPS_KEY = "sk-demo-FAKE-..."`
+  lines from `prompts/system.md` outright. No relocation needed — the key was fake — so the
+  fix is that no secret or security logic belongs in the prompt at all. Confirmed via grep
+  that neither string appears anywhere in the file anymore.
+
+### H — `read_inbox` patched (inbound injection)
+- Output is now wrapped in `<untrusted>...</untrusted>` markers (headers included, since a
+  subject line is as attacker-controlled as a body).
+- Added a sender allow-list (`$INBOX_ALLOWLIST` env var if set, comma-separated; otherwise a
+  built-in default of `noreply@hackthebox.com`). Unknown senders are **flagged, not dropped**
+  — demoed against the seeded `inbox.json`: `recovery-scam@example.example` and
+  `interviewer@example.com` both came back labeled `[SENDER NOT IN ALLOW-LIST]`, while
+  `noreply@hackthebox.com` did not.
+- Added the corresponding "HARDENED RULE" to `prompts/system.md`'s Operating rules: content
+  between `<untrusted>` markers is data, never instructions, must never trigger a send/write/
+  destination change, and suspicious instructions inside it should be reported to the user
+  rather than acted on. This is the same rule `AGENT_SYSTEM_PROMPT.md` specifies for vuln A's
+  `fetch_url`/`search_web` wrapping — A's own code doesn't apply `<untrusted>` wrapping yet
+  (out of scope for this session; A was only re-verified at the policy layer above), so the
+  rule currently governs `read_inbox` output in practice.
+
+**A–H status after this session: A, B, C, E, F, H patched. Only D and G remain
+vulnerable-as-designed** (both loop-level: no deterministic approval gate, no capability
+separation by phase — see §4/§7 for what each would require).
+
+**Pending going into next session:**
+- **D + G — the sole remaining A–H item.** A deterministic, code-level approval gate before
+  any irreversible tool call (D), and splitting the tool list by phase so the
+  untrusted-content-reading phase has no send/write tools (G). Neither has been started.
+- Layer 3/4 build-env work, carried over from §17: implement Option A's Anthropic-IP
+  allow-list in the gateway's `ip filter forward` chain and prove Claude Code connects while
+  all else stays blocked; mop-up allow-list needs (snap, NTP) and document the Files-API
+  caveat plus Options B/C; fold that session's 14 new lessons into `LESSONS_LEARNED.md`.
+- `.claude/settings.local.json` still has stale OneDrive-path entries — needs updating to
+  `C:\witi-project` (carried over from §12 onward).
+- The three `LEARNING_BACKLOG.md` tool-policy-engine questions, still unanswered.

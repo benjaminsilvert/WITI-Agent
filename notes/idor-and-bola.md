@@ -1,3 +1,7 @@
+---
+sensitivity: public
+---
+
 # IDOR and BOLA
 
 Insecure Direct Object Reference (IDOR) is when an application exposes a reference to an

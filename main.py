@@ -135,7 +135,33 @@ def fetch_url(url: str) -> str:
     return text[:FETCH_CHAR_CAP]
 
 
-def search_notes(query: str) -> str:
+def _note_sensitivity(text: str) -> str:
+    """Read the `sensitivity:` value from a note's leading front-matter block.
+
+    Fail-closed: a note with no front-matter, or front-matter with no
+    sensitivity line, is treated as private -- absence of a label is not
+    the same as a public label, and retrieval must not assume it is.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return "private"
+
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped == "---":
+            break
+        if stripped.lower().startswith("sensitivity:"):
+            return stripped.split(":", 1)[1].strip().lower()
+
+    return "private"
+
+
+def search_notes(query: str, include_private: bool = False) -> str:
+    """Search notes/ for a keyword. Data-layer authorization, not prompt-level:
+    the sensitivity filter is enforced here in code, so a caller must pass
+    include_private=True to see anything but public notes -- the model
+    noticing (or being told) a note is private/public is not what decides this.
+    """
     if not os.path.isdir(NOTES_DIR):
         return f"No '{NOTES_DIR}' directory found."
 
@@ -146,6 +172,8 @@ def search_notes(query: str) -> str:
             continue
         path = os.path.join(NOTES_DIR, name)
         text = open(path, encoding="utf-8").read()
+        if _note_sensitivity(text) != "public" and not include_private:
+            continue
         if query_lower in name.lower() or query_lower in text.lower():
             matches.append(f"--- {name} ---\n{text}")
 
@@ -160,7 +188,12 @@ def read_memory() -> str:
     return open(MEMORY_PATH, encoding="utf-8").read()
 
 
-def append_memory(content: str) -> str:
+def append_memory(content: str, source: str = "agent") -> str:
+    # Size cap: reject oversized content outright rather than truncating it --
+    # a silent truncation would hide how much of an injected payload got in.
+    if len(content) > 10_000:
+        return f"Rejected: content is {len(content)} chars, over the 10,000-char limit for a single memory entry."
+
     entries = []
     if os.path.exists(MEMORY_PATH):
         try:
@@ -169,7 +202,11 @@ def append_memory(content: str) -> str:
             entries = []
 
     entries.append(
-        {"content": content, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        {
+            "content": content,
+            "source": source,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
     )
 
     with open(MEMORY_PATH, "w", encoding="utf-8") as f:
@@ -179,9 +216,18 @@ def append_memory(content: str) -> str:
 
 
 def update_tracker(content: str) -> str:
-    with open(TRACKER_PATH, "w", encoding="utf-8") as f:
-        f.write(content)
-    return f"tracker.md updated ({len(content)} chars)."
+    # Size cap, same limit as append_memory.
+    if len(content) > 10_000:
+        return f"Rejected: content is {len(content)} chars, over the 10,000-char limit for a single tracker update."
+
+    # Append-only: a single call can never destroy prior tracker history, no
+    # matter what the model is talked into sending. Each call adds a
+    # timestamped section instead of overwriting the file.
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with open(TRACKER_PATH, "a", encoding="utf-8") as f:
+        f.write(f"\n## Update {timestamp}\n\n{content}\n")
+
+    return f"tracker.md appended ({len(content)} chars)."
 
 
 def send_digest(recipient: str, subject: str, body: str) -> str:
@@ -191,7 +237,32 @@ def send_digest(recipient: str, subject: str, body: str) -> str:
     return f"Digest written to {OUTBOX_PATH} (to: {recipient})."
 
 
+DEFAULT_INBOX_ALLOWLIST = ["noreply@hackthebox.com"]
+
+
+def _inbox_allowlist() -> list[str]:
+    """Trusted sender addresses for read_inbox, lowercased.
+
+    Read from $INBOX_ALLOWLIST (comma-separated) when set, so the user can
+    configure it without a code change; otherwise fall back to a small
+    built-in default.
+    """
+    raw = os.environ.get("INBOX_ALLOWLIST")
+    if raw:
+        return [addr.strip().lower() for addr in raw.split(",") if addr.strip()]
+    return DEFAULT_INBOX_ALLOWLIST
+
+
 def read_inbox() -> str:
+    """Read the inbox and return it as untrusted data, not instructions.
+
+    Every message is flagged (not dropped) if its sender isn't on the
+    allow-list, and the whole result -- headers included, since a subject
+    line is just as attacker-controlled as a body -- sits inside
+    <untrusted>...</untrusted> markers. The prompt is taught (see
+    prompts/system.md) that content between those markers must never be
+    treated as instructions.
+    """
     if not os.path.exists(INBOX_PATH):
         return "No messages."
 
@@ -199,8 +270,15 @@ def read_inbox() -> str:
     if not messages:
         return "No messages."
 
-    parts = [f"From: {m['from']}\nSubject: {m['subject']}\n\n{m['body']}" for m in messages]
-    return "\n\n---\n\n".join(parts)
+    allowlist = _inbox_allowlist()
+    parts = []
+    for m in messages:
+        sender = m["from"]
+        flag = "" if sender.lower() in allowlist else " [SENDER NOT IN ALLOW-LIST]"
+        parts.append(f"From: {sender}{flag}\nSubject: {m['subject']}\n\n{m['body']}")
+
+    body = "\n\n---\n\n".join(parts)
+    return f"<untrusted>\n{body}\n</untrusted>"
 
 
 def _resolve_placeholder(value):
