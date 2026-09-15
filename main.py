@@ -148,7 +148,8 @@ def fetch_url(url: str) -> str:
     text = re.sub(r"<script.*?</script>|<style.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
-    return text[:FETCH_CHAR_CAP]
+    text = text[:FETCH_CHAR_CAP]
+    return f"<untrusted>\nSource: {url}\n\n{text}\n</untrusted>"
 
 
 def _note_sensitivity(text: str) -> str:
