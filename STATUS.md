@@ -1128,3 +1128,39 @@ onward, superseded above at the end of §19) was checked manually today, 2026-09
   `read_inbox` — unfixed.
 - Everything already pending at the end of §19 (full re-run of the model-driven attack
   scripts; Layer 3/4 build-env work; the three `LEARNING_BACKLOG.md` questions) still stands.
+
+### Later same day — Layer 3 sandbox research (no config changed)
+
+**1. Done today (already committed):** vuln A's `<untrusted>` wrapping + proof
+(`attacks/verify_a_untrusted_wrap.py` + `_log.txt`, this section, above); and the
+`.claude/settings.local.json` OneDrive/`silve` pending item verified absent and closed
+(see "Housekeeping closed today" above).
+
+**2. Layer 3 sandbox — research only, no gateway config changed:**
+- Anthropic's published **inbound** IPv4 range, checked 2026-09-15 at
+  https://platform.claude.com/docs/en/api/ip-addresses: `160.79.104.0/23`. The **outbound**
+  range documented on the same page (`160.79.104.0/21`) is traffic Anthropic itself sends
+  out, not inbound API traffic the builder's requests need to reach — it's not what the
+  gateway's forward rule needs.
+- Per https://code.claude.com/docs/en/network-config, Claude Code needs more than the API
+  host to function: `api.anthropic.com`, `claude.ai`, `claude.com`, `platform.claude.com`
+  (login + token refresh), `downloads.claude.ai` (installer/updates). The IP-address page
+  only promises the fixed `/23` range for the API and Console — it says nothing about the
+  other four hosts, so an IP-only Option A allow-list may not cover login or updates.
+  **UNVERIFIED:** whether those hosts resolve inside `160.79.104.0/23` — not checked yet.
+
+**3. Pending for next session, in order:**
+   a. On the builder: run `claude --version` to confirm Claude Code is actually installed
+      there (believed yes, not verified).
+   b. On the builder: a `getent` loop resolving the 5 hosts above, to see which fall inside
+      `160.79.104.0/23`.
+   c. Based on (b), choose Option A (IP allow-list) or fall back to Option B/C, then write
+      the gateway `ip filter forward` rule.
+
+**4. Clarification recorded — two separate allow-list layers, not one:** the gateway
+firewall governs what the *builder VM* (where Claude Code itself runs) can reach on the
+network. WITI's own `fetch_url` allow-list (`tool_policy.json`'s `url_host` list) is a
+separate layer on the host, controlling what pages *WITI* is allowed to fetch as a tool
+call — the two controls don't need to match. **Open decision, not resolved:** whether to
+add `www.anthropic.com` to `tool_policy.json` if WITI should be able to read Anthropic's
+news/blog as part of its AI-security "theory" research.
