@@ -134,7 +134,7 @@ enforceable at the OS level.
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git config *)",
-      "Bash(cd C:\\\\Users\\\\silve\\\\OneDrive\\\\Desktop\\\\witi-agent\\\\files *)",
+      "Bash(cd C:\\\\witi-project *)",
       "Bash(\".venv/Scripts/python.exe\" attacks/exfil_demo.py)",
       "Bash(git commit *)",
       "Bash(\".venv/Scripts/python.exe\" -c \"import json; json.load\\(open\\('memory.json', encoding='utf-8'\\)\\); json.load\\(open\\('inbox.json', encoding='utf-8'\\)\\); print\\('OK: both JSON files valid'\\)\")",

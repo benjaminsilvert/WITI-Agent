@@ -1049,6 +1049,9 @@ table (corrected above) for the full per-vuln structural state and evidence poin
   allow-list in the gateway's `ip filter forward` chain and prove Claude Code connects while
   all else stays blocked; mop-up allow-list needs (snap, NTP) and document the Files-API
   caveat plus Options B/C; fold that session's 14 new lessons into `LESSONS_LEARNED.md`.
-- `.claude/settings.local.json` still has stale OneDrive-path entries — needs updating to
-  `C:\witi-project` (carried over from §12 onward).
 - The three `LEARNING_BACKLOG.md` tool-policy-engine questions, still unanswered.
+
+**Resolved this session:** `.claude/settings.local.json`'s stale-OneDrive-path item (carried
+over from §12 onward) was checked manually on 2026-09-15 with `Select-String` for `"OneDrive"`
+and `"silve"` against the file — both were absent. No edit was needed; the file already reads
+`C:\witi-project`.
