@@ -4,7 +4,11 @@
     "fetch_url": {
       "allow": true,
       "args": {
-        "url_host": ["claude.com", "www.terra.security"]
+        "url_host": ["claude.com", "www.anthropic.com"],
+        "url_path_prefix": {
+          "www.anthropic.com": ["/news"],
+          "claude.com": ["/blog"]
+        }
       }
     },
     "search_notes": {

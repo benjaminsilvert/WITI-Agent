@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -127,15 +128,97 @@ GATHER_TOOL_NAMES = {"fetch_url", "read_inbox", "search_notes", "read_memory"}
 ACT_TOOL_NAMES = {"append_memory", "update_tracker", "send_digest"}
 
 
+def _normalize_path(raw_path: str) -> str | None:
+    """Percent-decode a URL path and reject '..' segments.
+
+    Decoding first is what stops a lookalike like '%2e%2e' from sailing
+    through as an opaque string that doesn't look like '..' until decoded.
+    Returns None (reject) rather than a "safe" fallback if '..' is found --
+    fail closed, same as the rest of this file's policy checks.
+    """
+    decoded = urllib.parse.unquote(raw_path)
+    if any(segment == ".." for segment in decoded.split("/")):
+        return None
+    return decoded
+
+
+def _path_allowed(path: str, prefixes: list[str]) -> bool:
+    """True if path equals one of prefixes, or is a subpath of one.
+
+    The "+ '/'" is what stops '/newsletter' from matching an allow-listed
+    prefix of '/news' -- a bare str.startswith('/news') would let it through
+    since '/newsletter' does start with the characters '/news'.
+    """
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+
+
+def _fetch_url_policy_check(url: str) -> tuple[bool, str]:
+    """The one check fetch_url() applies to a URL, whether it's the URL the
+    caller asked for or a redirect target fetch_url followed partway through
+    (see _PolicyRedirectHandler below) -- both go through this same function
+    so a redirect can never see looser rules than the original request did.
+    """
+    policy_args = (TOOL_POLICY or {}).get("tools", {}).get("fetch_url", {}).get("args", {})
+    allowed_hosts = policy_args.get("url_host")
+    path_prefixes_by_host = policy_args.get("url_path_prefix")
+    if not allowed_hosts or not path_prefixes_by_host:
+        return False, "no url_host/url_path_prefix allow-list configured for fetch_url"
+
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname
+    if host not in allowed_hosts:
+        return False, f"host '{host}' not in allow-list for fetch_url ({allowed_hosts})"
+
+    # Fail closed: a host present in url_host but missing from
+    # url_path_prefix has no allowed paths, rather than defaulting to "all".
+    prefixes = path_prefixes_by_host.get(host)
+    if not prefixes:
+        return False, f"host '{host}' has no url_path_prefix entry (fail-closed) for fetch_url"
+
+    norm_path = _normalize_path(parsed.path)
+    if norm_path is None:
+        return False, f"path '{parsed.path}' rejected (contains '..' or invalid encoding) for fetch_url"
+    if not _path_allowed(norm_path, prefixes):
+        return False, f"path '{norm_path}' not in url_path_prefix allow-list for host '{host}' ({prefixes})"
+
+    return True, "allowed"
+
+
+class _PolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-applies fetch_url's host+path allow-list to every redirect target.
+
+    Without this, urlopen() follows 3xx redirects on its own with no policy
+    check -- an allowed URL could 302 to an attacker host/path and fetch_url
+    would return that response as if it had come from the allowed source.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # newurl is already the absolute, resolved redirect target -- urllib
+        # has already joined a relative Location header against the original
+        # URL by the time this method is called.
+        allowed, reason = _fetch_url_policy_check(newurl)
+        if not allowed:
+            # Raising here aborts the redirect; the exception propagates out
+            # of urlopen(), where fetch_url()'s `except Exception` below
+            # catches it, so the caller just sees an "Error fetching" message.
+            raise urllib.error.HTTPError(newurl, code, f"Redirect blocked by policy: {reason}", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# Installs our handler into the default opener that a plain
+# urllib.request.urlopen(...) call uses internally -- so fetch_url()'s
+# urlopen() call below needs no changes, but every redirect hop it follows
+# now runs through _PolicyRedirectHandler first.
+urllib.request.install_opener(urllib.request.build_opener(_PolicyRedirectHandler()))
+
+
 def fetch_url(url: str) -> str:
     # Defense-in-depth: check_policy() only runs on the run_tool() dispatch path --
-    # a direct main.fetch_url(...) call must still be stopped by the same host allow-list.
-    allowed_hosts = (TOOL_POLICY or {}).get("tools", {}).get("fetch_url", {}).get("args", {}).get("url_host")
-    if not allowed_hosts:
-        return "Denied by policy: no url_host allow-list configured for fetch_url."
-    host = urllib.parse.urlparse(url).hostname
-    if host not in allowed_hosts:
-        return f"Denied by policy: host '{host}' not in allow-list for fetch_url ({allowed_hosts})."
+    # a direct main.fetch_url(...) call must still be stopped by the same host+path
+    # allow-list.
+    allowed, reason = _fetch_url_policy_check(url)
+    if not allowed:
+        return f"Denied by policy: {reason}"
 
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "witi-agent/0.1"})
@@ -353,6 +436,23 @@ def check_policy(name: str, tool_input: dict) -> tuple[bool, str]:
             host = urllib.parse.urlparse(tool_input.get("url", "")).hostname
             if host not in allowed:
                 return False, f"host '{host}' not in allow-list for fetch_url ({allowed})"
+            continue
+
+        if name == "fetch_url" and key == "url_path_prefix":
+            # `allowed` here is the whole {host: [prefixes]} mapping, not a
+            # flat list -- the generic loop below assumes a flat allow-list,
+            # so this needs its own branch the same way url_host does.
+            url = tool_input.get("url", "")
+            parsed = urllib.parse.urlparse(url)
+            host = parsed.hostname
+            prefixes = allowed.get(host) if host else None
+            if not prefixes:
+                return False, f"host '{host}' has no url_path_prefix entry (fail-closed) for fetch_url"
+            norm_path = _normalize_path(parsed.path)
+            if norm_path is None:
+                return False, f"path '{parsed.path}' rejected (contains '..' or invalid encoding) for fetch_url"
+            if not _path_allowed(norm_path, prefixes):
+                return False, f"path '{norm_path}' not in url_path_prefix allow-list for host '{host}' ({prefixes})"
             continue
 
         value = tool_input.get(key)

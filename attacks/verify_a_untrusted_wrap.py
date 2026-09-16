@@ -24,7 +24,7 @@ import main  # noqa: E402  (reuse the real, unmodified fetch_url code)
 ATTACKS_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(ATTACKS_DIR, "verify_a_untrusted_wrap_log.txt")
 
-ALLOWED_URL = "https://claude.com/"
+ALLOWED_URL = "https://claude.com/blog"
 DENIED_URL = "http://evil-exfil.example/steal"
 
 
