@@ -129,14 +129,19 @@ ACT_TOOL_NAMES = {"append_memory", "update_tracker", "send_digest"}
 
 
 def _normalize_path(raw_path: str) -> str | None:
-    """Percent-decode a URL path and reject '..' segments.
+    """Percent-decode a URL path once and reject '..' segments or a leftover '%'.
 
     Decoding first is what stops a lookalike like '%2e%2e' from sailing
     through as an opaque string that doesn't look like '..' until decoded.
-    Returns None (reject) rather than a "safe" fallback if '..' is found --
-    fail closed, same as the rest of this file's policy checks.
+    A '%' still present after that one decode means the input was encoded
+    more than once (e.g. '%252e%252e' decodes to '%2e%2e', not '..') --
+    rather than loop decoding to chase that, we reject outright.
+    Returns None (reject) rather than a "safe" fallback if '..' or a leftover
+    '%' is found -- fail closed, same as the rest of this file's policy checks.
     """
     decoded = urllib.parse.unquote(raw_path)
+    if "%" in decoded:
+        return None
     if any(segment == ".." for segment in decoded.split("/")):
         return None
     return decoded
@@ -439,20 +444,13 @@ def check_policy(name: str, tool_input: dict) -> tuple[bool, str]:
             continue
 
         if name == "fetch_url" and key == "url_path_prefix":
-            # `allowed` here is the whole {host: [prefixes]} mapping, not a
-            # flat list -- the generic loop below assumes a flat allow-list,
-            # so this needs its own branch the same way url_host does.
-            url = tool_input.get("url", "")
-            parsed = urllib.parse.urlparse(url)
-            host = parsed.hostname
-            prefixes = allowed.get(host) if host else None
-            if not prefixes:
-                return False, f"host '{host}' has no url_path_prefix entry (fail-closed) for fetch_url"
-            norm_path = _normalize_path(parsed.path)
-            if norm_path is None:
-                return False, f"path '{parsed.path}' rejected (contains '..' or invalid encoding) for fetch_url"
-            if not _path_allowed(norm_path, prefixes):
-                return False, f"path '{norm_path}' not in url_path_prefix allow-list for host '{host}' ({prefixes})"
+            # Delegate to the single source of truth for fetch_url's
+            # host+path check (also used by fetch_url() itself and by
+            # _PolicyRedirectHandler) instead of re-implementing path
+            # matching here.
+            allowed_path, reason = _fetch_url_policy_check(tool_input.get("url", ""))
+            if not allowed_path:
+                return False, reason
             continue
 
         value = tool_input.get(key)

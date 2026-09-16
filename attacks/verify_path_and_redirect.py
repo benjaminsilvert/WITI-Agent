@@ -94,6 +94,11 @@ def main_():
         expect_allowed=False,
     )
     run_case(
+        lines, "double-percent-encoded .. segment (%252e%252e)", "fetch_url",
+        {"url": "https://claude.com/blog/%252e%252e/secret"},
+        expect_allowed=False,
+    )
+    run_case(
         lines, "disallowed host entirely", "fetch_url",
         {"url": ATTACKER_URL},
         expect_allowed=False,
@@ -113,6 +118,11 @@ def main_():
         lines, "redirect to an allowed target",
         "https://claude.com/blog/other",
         expect_allowed=True,
+    )
+    run_redirect_case(
+        lines, "redirect to double-percent-encoded .. segment",
+        "https://claude.com/blog/%252e%252e/secret",
+        expect_allowed=False,
     )
 
     with open(LOG_PATH, "w", encoding="utf-8") as f:
