@@ -2,8 +2,9 @@
 
 **Scope note:** this document covers controls on the *development environment* — the Claude
 Code instance used to build WITI — not WITI itself. WITI's deliberate vulnerabilities A–H
-(see `VULN_CATALOG.md`) remain intentionally unpatched by design; that is a separate threat
-model with a separate remediation track (`PORTFOLIO_PLAN.md` Phase 2).
+(see `VULN_CATALOG.md`) have since all been patched to v2 (`STATUS.md` §18–§19, with a
+further A hardening in §20); that was a separate threat model with a separate remediation
+track (`PORTFOLIO_PLAN.md` Phase 2), now complete.
 
 **Two threat models, not one.** This project actually has two distinct attackers in scope:
 the build environment, where the attacker is Claude Code itself — via prompt injection, a
@@ -275,7 +276,7 @@ else not yet enumerated. That is the property Layer 1's per-tool rules could nev
 
 ## Layer 3 — Sandbox / VM
 
-Substantially implemented: two-VM sandbox built, network wired, builder isolation proven (begun 2026-08-26 §16, wired 2026-08-28 §17). Egress lock-down in progress — see Layer 4.
+Implemented and proven end-to-end: two-VM sandbox built, network wired, builder isolation proven (2026-08-26 §16, 2026-08-28 §17); egress locked down and proven, and a live Claude Code install verified running behind it (2026-09-16 §21 — see Layer 4).
 
 Why a VM, and why now. Layers 1 and 2 bound the builder identity on the host — its filesystem access and its per-tool permissions. Layer 3 gives that identity its own machine, so its entire network stack can be controlled wholesale rather than filtered after the fact by account. This is precisely the environment Layer 4's finding (below) concluded was required: per-identity egress control cannot be done on the host, so it moves here.
 
@@ -299,9 +300,11 @@ Routing + NAT proven: IP forwarding enabled and persistent on the gateway; NAT m
 
 Same thesis as Findings 1–4. A control bound to a named thing (a tool, a command, a program) fails to bind to an identity or an environment. Layer 3's answer is to control the environment the builder identity runs in — its whole network path — rather than enumerating what it might run. That is the durable form of the fix Layer 4's host-firewall finding pointed toward.
 
+The builder now also runs a live, separately-installed Claude Code instance under this same containment — see Layer 4's live-agent verification subsection, below, for the fence demo proving the network boundary holds against it.
+
 ## Layer 4 — Network egress
 
-Host-firewall approach ruled out (2026-08-20); egress control now being enforced inside Layer 3. Default-deny in place and PROVEN biting; Anthropic allow-rule chosen but NOT yet implemented (2026-08-28 §17).
+Host-firewall approach ruled out (2026-08-20); egress control now enforced inside Layer 3. Default-deny in place and PROVEN biting; the Anthropic allow-rule (Option A) is now implemented and proven two-sided (2026-09-16 §21).
 
 Goal (unchanged): default-deny outbound for the builder, with an allow-list limited to Anthropic's API/auth endpoints — mirroring the per-identity file control Layer 2 achieves for the filesystem.
 
@@ -313,15 +316,69 @@ Default-deny forward chain — in place and proven. On the gateway, nftables tab
 Proven biting, at the enforcement layer, not by reading the ruleset: from the builder, ping 8.8.8.8 → 100% loss and curl -I https://example.com → timeout, while getent ahostsv4 example.com still resolves. DNS works; connections don't. That contrast is the proof the default-deny is real and not just present in a config file.
 A Hyper-V checkpoint (pre-egress-firewall) was taken before the lock-down, so the pre-firewall state is recoverable.
 
-Current end-state: the builder is presently blocked to everything except DNS. That means the sandbox is in a fully-locked state — Claude Code running on the builder cannot currently reach Anthropic's API through it until the allow-rule below is added. This is the expected intermediate state, not a fault: default-deny was proven first, selective-allow comes second.
+Current end-state: the forward chain now allows established/related traffic, DNS to `1.1.1.1`/`8.8.8.8`, and (as of 2026-09-16, below) tcp/443 to Anthropic's published range — everything else stays denied. Claude Code running on the builder can now reach Anthropic's API through the gateway; nothing else can reach out at all.
 
-Pending — the selective allow-rule (Option A chosen, not yet built):
+### Finding 5: a shared IP means the firewall can't tell allowed hosts apart
 
-Approach: a static allow-list of Anthropic's published fixed API IPs, added as an accept rule on tcp/443 to the ip filter forward chain, so the builder can reach the API while all else stays denied.
-Do not hard-code these from memory. Pull Anthropic's current published API IP ranges and required domains from the official documentation at build time; a stale or guessed range would silently break Claude Code or quietly widen the hole.
-Then prove it: Claude Code connects to the API from the builder while every other outbound destination stays blocked — the two-sided (allow the one, deny the rest) proof shape this document uses everywhere.
+Before writing the allow-rule, DNS was checked three times for stability. `api.anthropic.com`, `claude.ai`, `claude.com`, `platform.claude.com`, and `www.anthropic.com` all resolved to the same address, `160.79.104.10` — inside Anthropic's published `160.79.104.0/23` range. `downloads.claude.ai` resolved to a different address, `35.190.46.17`, outside that range. Because five otherwise-unrelated hostnames share one IP, an IP-level firewall rule that allows `160.79.104.10` cannot distinguish "the API" from any other service answering at that same address — the allow-rule is necessarily host-agnostic, not host-specific, at this layer. This is the same shared-IP/CDN limitation logged as an open question in `LEARNING_BACKLOG.md`.
 
-Honest limits to record alongside the allow-rule (future hardening):
+### Implemented — the Option A allow-rule (2026-09-16)
 
-The Files-API caveat. Allow-listing a domain grants access to every function behind it — e.g. allowing api.anthropic.com also reaches Anthropic's own Files API, which is itself an exfiltration channel. An IP/domain allow-list constrains where traffic goes, not what it carries.
-Options B and C, deferred: (B) resolve-allowed-hosts-at-load (the Claude Code devcontainer pattern); (C) a hostname-filtering egress proxy (what Anthropic itself runs). Both are stronger than a static IP list but heavier to stand up; noted as the next rung, not this session's work.
+The gateway's `/etc/nftables.conf` forward chain gained one accept rule:
+
+```
+iifname "eth1" oifname "eth0" ip daddr 160.79.104.0/23 tcp dport 443 accept comment "Anthropic published range, checked 2026-09-16"
+```
+
+placed inside the existing default-deny forward chain, so only traffic from the lab interface (`eth1`) to the internet interface (`eth0`), addressed to Anthropic's published range, on port 443, is allowed. The prior config was backed up to `/etc/nftables.conf.bak-2026-09-16` before the change.
+
+Proven two-sided, from the builder: `api.anthropic.com` went from a timeout (`000`) before the rule to `404` after it (a normal HTTP response for that path, not a network failure); `www.anthropic.com` returned `200`; `example.com` still timed out. The same command against the same target gave different results, with only the rule changed — the allow, the deny, and the boundary between them are all demonstrated in one comparison.
+
+### Finding 6: a temporary widened rule should be runtime-only, not written to the config
+
+Installing Claude Code onto the builder needed one more destination than the API range covers: `downloads.claude.ai`, at `35.190.46.17` (outside `160.79.104.0/23`, per Finding 5). Rather than add that address to `/etc/nftables.conf`, a single rule was added directly to the running ruleset with `nft` (comment `TEMP claude-code install 2026-09-16`) and never written to the file. Claude Code 2.1.267 was then installed from Anthropic's signed apt repository (stable channel); the signing key's fingerprint (`31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE`, uid "Anthropic Claude Code Release Signing <security@anthropic.com>") was checked against the key that had been imported.
+
+Because the temporary rule lived only in the kernel's running ruleset and not in the saved config, a reload or a reboot would remove it on its own — it could not be persisted by accident. It was in fact closed deliberately, with `systemctl restart nftables`, which reloads `/etc/nftables.conf` from disk and drops any runtime-only rule that isn't in it. Proven from the builder afterward: `downloads.claude.ai` timed out again, while `api.anthropic.com` still returned `404` — the temporary hole was gone and the permanent one was untouched.
+
+Process lesson: the fingerprint was checked *after* installing, not before — it confirms which key was used, but doesn't by itself rule out having trusted the wrong key going in. The expected fingerprint should be confirmed directly against Anthropic's own documentation (`code.claude.com/docs/en/setup`) before import, the next time this install is repeated.
+
+### Finding 7: the builder has no host firewall of its own — the gateway is the single point of control
+
+During this session, `systemctl restart nftables` was run on the builder by mistake (intended for the gateway). No harm resulted, but only because of what that revealed: the builder's own `nftables` is disabled at boot, `ufw` is inactive, and its actual ruleset is stock accept-all. The builder currently has no host-level firewall of its own — every outbound restriction the builder is subject to lives entirely on the gateway. That is by design (Layer 3's whole point is to put egress control outside the contained machine), but it also means the gateway is a true single point of control: if the gateway's ruleset is ever wrong, missing, or bypassed, the builder has no fallback layer behind it. New operational habit adopted afterward: guard gateway-only commands with a hostname check (`[ "$(hostname)" = "witi-gateway" ] && ...`) before running anything that reloads or restarts firewall state.
+
+### Verified end-to-end against a live agent — the Claude Code fence demo (2026-09-16)
+
+The same "verify against a live agent, not just a manual probe" step Layer 2 used was repeated here for the network fence. A separately-installed Claude Code was run as `builderadmin` on the builder, in `~/fence-demo`, and used to exercise three different tool types against the same contrast (`example.com`, disallowed, vs. Anthropic's own domains, allowed):
+
+- **Bash `curl`**, run in Claude Code's auto mode ("Allowed by auto mode classifier" — no human approval was requested or given): `example.com` returned exit code 28 / `000`; `api.anthropic.com` returned `404`. The fence held with no human checkpoint in the loop.
+- **WebFetch**: `example.com` failed with a vague error ("Command failed with no output"); `www.anthropic.com/news` succeeded (`200 OK`, 454.5KB). Taken together, this is strong evidence — not proof — that WebFetch executes from the builder and is therefore subject to the same fence as Bash; a vague client-side failure alongside a real fetch elsewhere is consistent with that, but doesn't directly confirm where the request originated.
+- **WebSearch**: succeeded — see Finding 8, below.
+
+Login through the fence (to Anthropic's own login hosts) succeeded, as expected, since those hosts are inside the allowed range.
+
+Screenshots: `attacks/screenshots/buildenv_claude_code_fence_test.png`,
+`attacks/screenshots/buildenv_claude_code_webfetch_blocked.png`,
+`attacks/screenshots/buildenv_claude_code_webfetch_allowed.png`,
+`attacks/screenshots/buildenv_claude_code_websearch.png`.
+
+Known limitation: Claude Code ran as `builderadmin`, which has `sudo` on the builder itself but no access to the gateway — this demo exercises the network fence, not a compromised-builder-attacks-the-gateway scenario (see Finding 7).
+
+Decision: WITI itself was not copied onto the builder for this demo — its Python dependencies would need PyPI, which the fence blocks — so the Claude Code install is the proof of concept, not a run of WITI inside the sandbox. A checkpoint, `post-claude-code-demo`, was taken with both VMs powered off afterward.
+
+### Finding 8: the gateway cannot see or restrict what a server-side tool does
+
+WebSearch succeeded behind the fence. WebSearch is a server-side tool: the request Claude Code sends is the same kind of allowed, encrypted call to Anthropic that every other tool call makes — the builder's only visible network activity is that one allowed connection. The search itself, and whatever it fetches from the wider web on Claude Code's behalf, happens on Anthropic's own infrastructure, never as separate traffic from the builder. The gateway has nothing to see or restrict beyond the one call it already permits: it cannot tell "a normal API request" from "a request whose purpose is to trigger a web search," because both look identical at the network layer. The only firewall-level way to stop this would be to block Anthropic's range entirely — which also breaks every other Claude Code function that needs it, including the ones this fence exists to allow.
+
+### Finding 9: a tool being blocked doesn't mean every tool is fenced
+
+Bash and WebFetch being blocked for `example.com` does not, by itself, establish that the network fence covers every tool Claude Code exposes — Finding 8 shows a case where it doesn't. Each tool must be tested according to where it runs: a client-side tool's traffic leaves from the builder and hits the gateway, so blocking it is a real test of the fence; a server-side tool's traffic leaves from Anthropic's own infrastructure and never reaches the gateway at all, so no client-side test can say anything about it one way or the other. This demo's three tools split exactly along that line — Bash and WebFetch client-side, WebSearch server-side — which is why all three needed to be tried separately rather than treating one passing test as coverage for the rest.
+
+Honest limits, still open (not resolved by Option A):
+
+The Files-API caveat. Allow-listing a domain grants access to every function behind it — e.g. allowing `api.anthropic.com` also reaches Anthropic's own Files API, which is itself an exfiltration channel. An IP/domain allow-list constrains where traffic goes, not what it carries. Finding 8, above, is the same limit observed live, for a different Anthropic capability (WebSearch) rather than the Files API.
+Options B and C, deferred: (B) resolve-allowed-hosts-at-load (the Claude Code devcontainer pattern); (C) a hostname-filtering egress proxy (what Anthropic itself runs). Both are stronger than a static IP list but heavier to stand up; noted as the next rung, not yet started.
+
+### Next steps
+
+- Export the build environment into the repo as rebuildable config: `infra/gateway/nftables.conf` (copied from the gateway), rebuild scripts, and `docs/build-environment.md` with a layered diagram and its own limitations section (shared IP, server-side tools, the Files-API caveat, no builder host firewall, the manual temporary-rule process).
+- Optional further hardening: run Claude Code on the builder as a limited user rather than `builderadmin`; add a host firewall on the builder itself (would give it a second layer behind the gateway — see Finding 7); deny WebSearch in Claude Code's own permissions if the server-side bypass in Finding 8 is unacceptable for a given run; turn off Hyper-V automatic checkpoints.
