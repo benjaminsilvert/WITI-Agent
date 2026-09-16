@@ -1164,3 +1164,120 @@ separate layer on the host, controlling what pages *WITI* is allowed to fetch as
 call — the two controls don't need to match. **Open decision, not resolved:** whether to
 add `www.anthropic.com` to `tool_policy.json` if WITI should be able to read Anthropic's
 news/blog as part of its AI-security "theory" research.
+
+---
+
+## §21 — End-of-session wrap — 2026-09-16
+
+**Headline:** Closed the `fetch_url` path-prefix/redirect gap end-to-end (hand-edited
+config + code patch + verification), implemented and proved the gateway's Option A
+Anthropic-IP allow-list, installed and verified Claude Code on the builder behind that
+fence, and ran a fence demo (Bash/WebSearch/WebFetch) with screenshots. `BUILD_ENV_HARDENING.md`
+was not touched this session — updating it with the Layer 3/4 results is a separate,
+still-open task (see Pending item 1 below).
+
+### WITI code changes (host)
+- `tool_policy.json` (hand-edited by me — the file is locked against `witi-agent`):
+  removed `www.terra.security`; `fetch_url`'s `url_host` allow-list is now `claude.com` and
+  `www.anthropic.com`, plus a new `url_path_prefix` map: `{"www.anthropic.com": ["/news"],
+  "claude.com": ["/blog"]}`.
+- Commit `4b25761`: path-prefix allow-list (exact-or-subpath match, so `/newsletter` !=
+  `/news`; percent-decode the path and reject `..` segments; fail-closed if a host has no
+  `url_path_prefix` entry) plus a redirect handler that re-checks every redirect target
+  against the same policy.
+- Follow-up commit (now `HEAD`, pushed; `origin/main` = `fad0f9d`): reject any path still
+  containing `%` after one decode pass (closes the `%252e%252e` double-encoding bypass);
+  `check_policy` now calls `_fetch_url_policy_check` instead of duplicating the logic.
+- Verification: `verify_path_and_redirect.py` 11/11 PASS, `verify_ab_patch.py` 4/4,
+  `verify_a_untrusted_wrap.py` 3/3 — old messages unchanged after the refactor (regression
+  check). Manual check: `www.anthropic.com/news` → `(True, 'allowed')`;
+  `www.anthropic.com/careers` → denied at the path check, no network call made.
+  - `/newsletter` → denied: the lookalike-prefix trap is closed (`/news` only matches
+    `/news` or `/news/...`).
+  - `..` and `%2e%2e` → denied: both path-traversal forms are caught.
+  - `%252e%252e` (double-encoded) → denied, both as a direct request and as a redirect
+    target.
+  - Redirect to a bad host, or to a bad path on a good host → blocked: the redirect gap is
+    closed at both the host and path level.
+  - Redirect to `/blog/other` → allowed: legitimate redirects still work.
+- Limits: `fetch_url` now denies legitimate paths containing encoded characters (acceptable
+  for `/news`/`/blog`). The pre-fix `%252e%252e` bypass was flagged by Claude Code but not
+  independently demonstrated.
+- Decision: the real email address exists in git history (`f6c91f8`, removed in `573617b`)
+  and in every commit's author metadata; accepted as low-sensitivity, not scrubbed. Option
+  for later: a GitHub `noreply` commit email. Commit `4b25761`'s message contains Markdown
+  link text around hostnames (cosmetic only).
+- Incident: a stray file `-files tool_policy.json` was created by typing a command while
+  still inside git's `less` pager (`s` = save to file); it contained `git show` output and
+  was deleted. Habit: press `q` at `:`/`(END)`, or use `git --no-pager`.
+
+### Build environment (Layer 3/4)
+- Pending item (a) resolved: Claude Code was **not** installed on the builder (no `claude`,
+  no `~/.local/bin`, no `~/.claude`, no `node`/`npm`).
+- DNS (3 runs, stable): `api.anthropic.com`, `claude.ai`, `claude.com`,
+  `platform.claude.com`, `www.anthropic.com` all → `160.79.104.10` (inside the published
+  `160.79.104.0/23`); `downloads.claude.ai` → `35.190.46.17` (outside). Five hosts share one
+  IP, so the firewall can't distinguish them.
+- Option A implemented on the gateway: `/etc/nftables.conf`'s forward chain now has
+  `iifname "eth1" oifname "eth0" ip daddr 160.79.104.0/23 tcp dport 443 accept comment
+  "Anthropic published range, checked 2026-09-16"`. Backup: `/etc/nftables.conf.bak-2026-09-16`.
+  (The older `/etc/nftables.conf.bak`, 243 bytes, Aug 27, is likely the pre-filter NAT-only
+  file.)
+- Two-sided proof from the builder: `api.anthropic.com` timeout (000) before → 404 after;
+  `www.anthropic.com` 200; `example.com` still timeout.
+- Install: a temporary runtime-only `nft` rule for `35.190.46.17` (comment "TEMP
+  claude-code install 2026-09-16", never written to the file). Installed via Anthropic's
+  signed apt repo (stable channel): Claude Code 2.1.267. Signing key fingerprint
+  `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE`, uid "Anthropic Claude Code Release Signing
+  <security@anthropic.com>". Process lesson: the fingerprint was checked *after* install
+  rather than before; the expected value should also be confirmed directly against
+  code.claude.com/docs/en/setup.
+- Gap closed by `systemctl restart nftables` on the gateway (4 rules, no TEMP); proven from
+  the builder: `downloads.claude.ai` timeout, `api.anthropic.com` still 404.
+- `apt` on the builder will now warn about `downloads.claude.ai` on a plain `apt update`;
+  Claude Code there won't update unless the gap is deliberately reopened.
+- Incident: `systemctl restart nftables` was accidentally run **on the builder**. No harm:
+  the builder's `nftables` is disabled at boot, `ufw` inactive, stock accept-all ruleset.
+  Finding: the builder has no host firewall; all outbound control is at the gateway (single
+  point of control). New habit: guard gateway commands with
+  `[ "$(hostname)" = "witi-gateway" ] && ...`.
+- `nft` CLI lesson: bash strips double quotes before `nft` sees them, so the rule must be
+  wrapped in single quotes.
+
+### Claude Code fence demo (builder, as `builderadmin`, in `~/fence-demo`)
+- Login through the fence succeeded (login hosts are inside the allowed range).
+- Bash `curl` (run in auto mode, "Allowed by auto mode classifier", no human approval):
+  `example.com` exit 28 / 000; `api.anthropic.com` 404. The fence held without any human
+  checkpoint.
+- WebSearch: succeeded behind the fence (a server-side tool; the search runs at Anthropic).
+  The fence does not stop untrusted web content reaching the agent or data leaving via an
+  allowed service, and gateway logs can't see what was searched.
+- WebFetch: `example.com` failed ("Command failed with no output", a vague error);
+  `www.anthropic.com/news` succeeded (200 OK, 454.5KB). Strong evidence (not proof) that
+  WebFetch runs from the builder and the fence applies. WebFetch also flagged unfamiliar
+  (but real) model names as unverified — good caution; its knowledge cutoff made it doubt
+  accurate content.
+- Screenshots (now committed): `buildenv_claude_code_fence_test.png`,
+  `buildenv_claude_code_websearch.png`, `buildenv_claude_code_webfetch_blocked.png`,
+  `buildenv_claude_code_webfetch_allowed.png`.
+- Known limitation: Claude Code ran as `builderadmin` (has `sudo` on the builder, but can't
+  touch the gateway).
+- Decision: WITI itself was **not** copied to the builder (its Python packages would need
+  PyPI, which the fence blocks); the Claude Code demo is the proof of concept.
+- Named checkpoint: `post-claude-code-demo`. Both VMs powered off. (On boot, Hyper-V's
+  automatic-checkpoint dialog → chose Continue.)
+
+**Pending going into next session, in order:**
+1. Update `BUILD_ENV_HARDENING.md` with the Layer 3/4 results (separate task, next).
+2. Export the build environment into the repo: `infra/gateway/nftables.conf` (scp from the
+   gateway), rebuild scripts, `docs/build-environment.md` with a layered diagram and a
+   limitations section (shared IP, server-side tools, Files-API caveat, no builder host
+   firewall, manual temporary gap).
+3. The `</untrusted>` marker-breakout gap in `fetch_url` and `read_inbox` (still open, from
+   §20).
+4. Re-run the live chain scripts against v2.
+5. The `LEARNING_BACKLOG.md` open questions; today's lessons folded into
+   `LESSONS_LEARNED.md`.
+6. Optional hardening: run Claude Code on the builder as a limited user; add a builder host
+   firewall; deny WebSearch in Claude Code permissions if needed; turn off Hyper-V automatic
+   checkpoints.
