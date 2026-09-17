@@ -1,0 +1,19 @@
+[PASS] C: append_memory rejects oversized content, memory unchanged: rejected=True unchanged=True
+[PASS] C: normal append_memory stores a 'source' field: stored=True has_source=True
+[PASS] C: update_tracker rejects oversized content, tracker unchanged: rejected=True unchanged=True
+[PASS] C: update_tracker is append-only, two calls leave both entries present: first_present=True second_present=True
+[PASS] D: input()='n' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
+[PASS] D: input()='' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
+[PASS] D: input()='yes' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
+[PASS] D: input()='garbage' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
+[PASS] D: input()='y' lets append_memory through via run_tool: stored=True content_matches=True
+[PASS] D: read_memory (non-consequential) never calls input(): input_never_called=True
+[PASS] E: search_notes default returns only the public note: public_present=True private_absent=True unlabeled_absent=True
+[PASS] E: search_notes(include_private=True) returns all three notes: all_present=True
+[PASS] G: gather-phase tools exclude send/write tools; act-phase tools exclude fetch_url/read_inbox: gather_tools=['fetch_url', 'read_inbox', 'read_memory', 'search_notes'] act_tools=['append_memory', 'send_digest', 'update_tracker']
+[PASS] G: fetch_url/read_inbox ARE in the gather list; send_digest/append_memory/update_tracker ARE in the act list: missing_from_gather=[] missing_from_act=[]
+[PASS] G: TOOL_POLICY=None -> build_phase_tools() returns two empty lists, no crash: gather_empty=True act_empty=True
+[PASS] H: read_inbox output is wrapped in <untrusted>...</untrusted>: wrapped=True
+[PASS] H: unknown sender is flagged: flagged=True
+[PASS] H: allow-listed sender is not flagged: not_flagged=True
+[PASS] H: flagged message is still included, not dropped: included=True

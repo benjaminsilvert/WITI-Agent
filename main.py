@@ -632,6 +632,21 @@ def run_tool(name: str, tool_input: dict) -> str:
     return f"Unknown tool: {name}"
 
 
+def build_phase_tools() -> tuple[list[dict], list[dict]]:
+    """Return (gather_tools, act_tools): ALL_TOOLS filtered to what TOOL_POLICY
+    allows, split by each phase's fixed tool-name set (GATHER_TOOL_NAMES /
+    ACT_TOOL_NAMES) -- the gather phase never even sees a send/write tool. Pure
+    computation, no API call, so it's independently testable outside main().
+
+    Fails closed like check_policy(): TOOL_POLICY is None -> both lists come back
+    empty rather than raising.
+    """
+    policy_tools = (TOOL_POLICY or {}).get("tools", {})
+    gather_tools = [t for t in ALL_TOOLS if policy_tools.get(t["name"], {}).get("allow") and t["name"] in GATHER_TOOL_NAMES]
+    act_tools = [t for t in ALL_TOOLS if policy_tools.get(t["name"], {}).get("allow") and t["name"] in ACT_TOOL_NAMES]
+    return gather_tools, act_tools
+
+
 def run_phase(client, system_prompt, messages, tools):
     # Capability separation (vuln G) is enforced here: each phase only ever sees the
     # tool list it's called with -- an architectural boundary, not a prompt instruction
@@ -671,18 +686,7 @@ def main():
     global TOOL_POLICY
     TOOL_POLICY = load_policy()
 
-    # Only advertise tools the policy allows at all -- a tool the model never
-    # sees, it can't call. (Argument-level rules still apply per-call in run_tool.)
-    # Each phase is further restricted to its own tool names (see GATHER_TOOL_NAMES /
-    # ACT_TOOL_NAMES above) -- the gather phase never even sees a send/write tool.
-    gather_tools = [
-        t for t in ALL_TOOLS
-        if TOOL_POLICY["tools"].get(t["name"], {}).get("allow") and t["name"] in GATHER_TOOL_NAMES
-    ]
-    act_tools = [
-        t for t in ALL_TOOLS
-        if TOOL_POLICY["tools"].get(t["name"], {}).get("allow") and t["name"] in ACT_TOOL_NAMES
-    ]
+    gather_tools, act_tools = build_phase_tools()
 
     client = Anthropic(api_key=api_key)
     system_prompt = open("prompts/system.md", encoding="utf-8").read()
