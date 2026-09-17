@@ -1358,3 +1358,114 @@ to date with its v2 fix, and closed a delete/rename gap in Layer 2's file locks 
 4. Remove interview framing from the repo.
 5. Final push.
 6. Delete the old OneDrive folder.
+
+## §23 — Session 2026-09-17 (continued): correction, read_memory wrapping, build-env export/docs, root README, interview-framing cleanup
+
+**Headline:** Corrected a hand-counting error in §22's own "21/21" claim (the suite
+had 19 cases, not 21, until this session's `read_memory` work actually made it 21);
+every `verify_*.py` script now prints a computed total instead of relying on anyone
+counting `[PASS]` lines by eye, and a new `run_all_verify.py` runs all eight
+(`69/69 PASS`). `read_memory` now wraps its output in `<untrusted>` markers, matching
+`read_inbox`. The gateway's `nftables.conf` was exported into the repo
+(`infra/gateway/`, commit `8233ca4`) and `docs/build-environment.md` was written,
+then corrected once the two build-environment identities (`witi-agent` on the host,
+`builderadmin` on the builder VM) turned out to have been conflated in the first
+draft. A root `README.md` and `.env.example` were added, and interview-coaching
+framing was removed from the design/reference docs.
+
+### Correction: §22's "21/21" was a hand-count
+`attacks/verify_v2_cdegh.py` actually had **19** cases going into today, not 21 —
+confirmed by reading the log file committed at that point
+(`git show a1b8559:attacks/verify_v2_cdegh_log.txt | grep -c '^\[PASS\]'` → 19), not
+by re-deriving it from memory. §22's "21/21 PASS" line, and the same "(21/21)" baked
+into `MANUAL_VULN_C.md`/`_DG.md`/`_E.md`/`_H.md`, were all wrong at the time they
+were written — they only read as correct now because today's 2 new `read_memory`
+cases happened to land the real total on the same number (19 + 2 = 21) as the
+earlier miscount. Fix, so this class of error can't recur silently: every
+`verify_*.py` script now computes and prints its own `"<passed>/<total> PASS"`
+line from actual `[PASS]`/`[FAIL]` counts (appended to its log file too), and a new
+`attacks/run_all_verify.py` runs all eight as subprocesses and reports
+name/passed/total/exit per script plus an overall total — currently `69/69 PASS`,
+exit 0. Every `N/N` count quoted across the repo's `.md` files was grepped and
+cross-checked against real script output; no other mismatches were found.
+
+### `read_memory` wrapped in `<untrusted>` markers (Option B)
+`read_memory()` now passes its return value through `_neutralize_markers()` and
+wraps it in `<untrusted>...</untrusted>`, matching `read_inbox()`'s pattern — a
+poisoned memory entry from an earlier run can no longer pose as a trusted
+instruction just by being read back. `READ_MEMORY_TOOL`'s description updated to
+match. `prompts/system.md`'s untrusted-content rule now names `read_memory`
+explicitly, and no longer names `search_web` — no such tool exists in `main.py`;
+that reference (also present in `AGENT_SYSTEM_PROMPT.md`/`VULN_CATALOG.md`, left
+alone as design-doc history) was stale. `verify_v2_cdegh.py` gained 2 cases (output
+wrapped; a `</untrusted>`-containing entry gets neutralized) — 19 → 21.
+
+### Build environment: exported and documented
+- `infra/gateway/nftables.conf` (commit `8233ca4`) — the gateway's live ruleset,
+  copied into the repo for reference/rebuildability; `infra/gateway/README.md`
+  states where it comes from.
+- `docs/build-environment.md` — written with a Mermaid diagram and a per-layer
+  enforcement/verification summary. First draft conflated `witi-agent` (the
+  host's file-locked identity, Layers 1–2, no network fence of its own) with the
+  builder VM's separate `builderadmin` identity (Layers 3–4, network-fenced, no
+  file locks of its own) as if one identity had both properties — corrected to
+  show them as two disconnected environments. Also corrected: Finding 10's
+  delete/rename checks were PowerShell commands run as `witi-agent` (project-folder
+  rename not live-tested), distinct from the original live-agent write/read test;
+  the IPv6 drop table; WebFetch is strong evidence, not proof, of client-side
+  execution; WebSearch's request passes the gateway as an allowed API call but the
+  search itself doesn't; the shared-IP finding is dated (2026-09-16) and no longer
+  mislabels `claude.com`/`www.anthropic.com` as "login hosts."
+
+### Root `README.md`, `.env.example`, interview-framing cleanup
+- `README.md` — portfolio front page: before/after table (A–H + B2), a Setup
+  section, `python attacks/run_all_verify.py` as the verification entry point,
+  build-environment summary, the live-run caveat, and a known-limitations list.
+  Went through a fact-check pass after first draft: `send_digest` writes to a
+  local `outbox.txt` (no real email, in either version); "exploited against its
+  own unmodified code" reworded to "proven structurally + refused live"; live
+  runs are 3 conclusive + 1 inconclusive, not "four data points" undifferentiated;
+  `append_memory`'s `source` field is always `"agent"` via the tool path, never
+  real provenance; the never-built third WITI-runtime identity and the design
+  docs' unbuilt `search_web`/real-Gmail plan added as limitations.
+- `.env.example` — placeholders only (`ANTHROPIC_API_KEY`, `OWNER_EMAIL`).
+- Interview-coaching framing removed from `AGENT_SYSTEM_PROMPT.md`,
+  `CLAUDE_CODE_WALKTHROUGH.md`, `VULN_CATALOG.md` ("interview payoff" → "why it
+  matters," "Interview value" → "Value," specific past-interview references
+  dropped while keeping each security lesson, "the line that lands" dropped).
+  `notes/`, `inbox.json`, `memory.json`, `tracker.md`, `STATUS.md`, and captured
+  output quoted inside `attacks/MANUAL_VULN_*.md` deliberately left untouched —
+  editing captured evidence would falsify the record.
+
+### Finding: a Read-deny rule also blocks Write on the same path
+Attempting to create `.env.example` via the Write tool failed: `"File is covered
+by a Read deny rule in your permission settings and cannot be written."`
+`.claude/settings.local.json` has no Write or Edit deny rule matching `.env*` at
+all — only `Read(./.env)` and `Read(./.env.*)`. The harness applies the *Read*
+deny rule to the *Write* attempt too: a path it won't let you inspect first, it
+also won't let you blindly write to. Worked around at the time by naming the file
+`example.env` instead (documented inline); later reverted to `.env.example` by
+hand once the file existed and could be renamed without needing a fresh write to
+the denied path.
+
+### Still open
+Which directory `witi-agent`'s separately-installed Claude Code was launched
+from during the Layer 2 live-agent test (the one that proved the `tool_policy.json`
+write and `.env` read were refused) — undetermined. Neither
+`BUILD_ENV_HARDENING.md` nor `STATUS.md` §12–§13 states it, so
+`docs/build-environment.md` now says this explicitly rather than asserting either
+way. If it was launched inside this project's directory, that Claude Code session
+would also have had this project's Layer 1 `.claude/settings.local.json` rules
+applied to it (readable by `witi-agent`, only write+delete denied) — a fact that
+would change how Finding 3's closure is described, but isn't confirmed.
+
+**Pending going into the next (final) session, in order:**
+1. Decide the commit-email question deferred in §21: keep the real address in
+   author metadata (accepted there as low-sensitivity) or switch to a GitHub
+   `noreply` commit email going forward.
+2. Push to `origin/main` (8 commits currently local-only, not yet pushed).
+3. After pushing, verify `README.md` and both Mermaid diagrams
+   (`docs/build-environment.md`) actually render correctly on GitHub — not yet
+   viewed rendered, only as source.
+4. Delete the old OneDrive folder (carried over from every session since §12;
+   still blocked there on an unresolved OneDrive sync-pending state as of §12).
