@@ -1346,6 +1346,5 @@ to date with its v2 fix, and closed a delete/rename gap in Layer 2's file locks 
    scope).
 3. Stale-doc updates.
 4. Remove interview framing from the repo.
-5. `LEARNING_BACKLOG.md` open questions.
-6. Final push.
-7. Delete the old OneDrive folder.
+5. Final push.
+6. Delete the old OneDrive folder.
