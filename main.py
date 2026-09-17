@@ -217,6 +217,67 @@ class _PolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
 urllib.request.install_opener(urllib.request.build_opener(_PolicyRedirectHandler()))
 
 
+# --- Marker-breakout defense (STATUS.md §20 caveat) --------------------------
+#
+# The <untrusted>...</untrusted> wrapper only works as a trust boundary if the
+# TEXT INSIDE it can never contain something that *looks like* a real marker.
+# Otherwise a fetched page or an inbox message could smuggle in its own fake
+# "</untrusted>" and trick a careless reader (human or model) into thinking
+# the untrusted section ended early, with attacker text after it treated as
+# if it were outside the boundary (or a fake "<untrusted>" making trusted-looking
+# text seem to start a *new* untrusted section). _neutralize_markers() finds
+# every spelling of the open or close marker -- real angle brackets, HTML-entity
+# angle brackets, mixed case, extra spaces -- and replaces each one with the
+# harmless literal text "[removed marker]" before the text is ever wrapped.
+#
+# _ANGLE_OPEN matches anything that could render or be read as a literal "<":
+#   <            the real character
+#   &lt;?        the named HTML entity "&lt;", with the ";" made optional (";?")
+#                because "&lt" without a semicolon is still treated as "<" by
+#                real HTML parsers, so we have to catch it too
+#   &#0*60;?     the decimal numeric entity for "<" (character code 60).
+#                "0*" means "zero or more '0' characters", so this matches
+#                &#60;, &#060;, &#0060; and so on -- entities are allowed to
+#                have extra leading zeros and still mean the same character.
+#                ";?" again makes the trailing semicolon optional.
+#   &#x0*3c;?    the hexadecimal numeric entity for "<" (0x3c = 60 decimal),
+#                same "0*" leading-zero and ";?" optional-semicolon reasoning.
+# _ANGLE_CLOSE is the same idea for ">" (character code 62 / 0x3e).
+# "(?:...)" around each list of alternatives is a *non-capturing* group -- it
+# just groups the "or"s together without creating a numbered capture group we
+# don't need.
+_ANGLE_OPEN = r"(?:<|&lt;?|&#0*60;?|&#x0*3c;?)"
+_ANGLE_CLOSE = r"(?:>|&gt;?|&#0*62;?|&#x0*3e;?)"
+
+# The full marker pattern, built from the two pieces above:
+#   _ANGLE_OPEN   an opening angle bracket (or a lookalike)
+#   \s*           optional whitespace right after it
+#   /?            an optional "/" -- present for a CLOSING marker
+#                 (</untrusted>), absent for an OPENING one (<untrusted>).
+#                 This single pattern deliberately matches both, since either
+#                 one breaking the wrapper is a problem.
+#   \s*           optional whitespace after the "/"
+#   untrusted     the literal word "untrusted"
+#   \s*           optional whitespace before the closing bracket
+#   _ANGLE_CLOSE  a closing angle bracket (or a lookalike)
+# re.IGNORECASE makes every letter above match regardless of case, so this
+# one pattern also covers </UNTRUSTED>, <Untrusted>, &LT;/untrusted&GT;, etc.
+_UNTRUSTED_MARKER_RE = re.compile(
+    _ANGLE_OPEN + r"\s*/?\s*untrusted\s*" + _ANGLE_CLOSE,
+    re.IGNORECASE,
+)
+
+
+def _neutralize_markers(text: str) -> str:
+    """Replace every open/close <untrusted> marker lookalike in text with a harmless string.
+
+    Called on fetched-page text, the fetched URL, and inbox sender/subject/body
+    BEFORE any of it is placed inside a real <untrusted>...</untrusted> wrapper,
+    so nothing untrusted can forge a boundary of its own.
+    """
+    return _UNTRUSTED_MARKER_RE.sub("[removed marker]", text)
+
+
 def fetch_url(url: str) -> str:
     # Defense-in-depth: check_policy() only runs on the run_tool() dispatch path --
     # a direct main.fetch_url(...) call must still be stopped by the same host+path
@@ -236,8 +297,12 @@ def fetch_url(url: str) -> str:
     text = re.sub(r"<script.*?</script>|<style.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    # Neutralize marker lookalikes BEFORE the char cap, so the cap stays the
+    # final length limit and can't cut a "[removed marker]" replacement in half.
+    text = _neutralize_markers(text)
     text = text[:FETCH_CHAR_CAP]
-    return f"<untrusted>\nSource: {url}\n\n{text}\n</untrusted>"
+    safe_url = _neutralize_markers(url)
+    return f"<untrusted>\nSource: {safe_url}\n\n{text}\n</untrusted>"
 
 
 def _note_sensitivity(text: str) -> str:
@@ -387,8 +452,15 @@ def read_inbox() -> str:
     parts = []
     for m in messages:
         sender = m["from"]
+        # The allow-list check runs on the RAW sender, before neutralization --
+        # a message can't dodge the flag by hiding a marker lookalike in its
+        # From address, and neutralization must never change who counts as
+        # "on the allow-list".
         flag = "" if sender.lower() in allowlist else " [SENDER NOT IN ALLOW-LIST]"
-        parts.append(f"From: {sender}{flag}\nSubject: {m['subject']}\n\n{m['body']}")
+        safe_sender = _neutralize_markers(sender)
+        safe_subject = _neutralize_markers(m["subject"])
+        safe_body = _neutralize_markers(m["body"])
+        parts.append(f"From: {safe_sender}{flag}\nSubject: {safe_subject}\n\n{safe_body}")
 
     body = "\n\n---\n\n".join(parts)
     return f"<untrusted>\n{body}\n</untrusted>"

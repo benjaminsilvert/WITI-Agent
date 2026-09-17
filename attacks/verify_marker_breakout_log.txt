@@ -1,0 +1,9 @@
+[PASS] fetch_url page with &lt;/untrusted&gt; -> neutralized, one real closing marker: neutralized=True fake_gone=True exactly_one_close=True
+[PASS] fetch_url page with &#060;/untrusted&#062; (leading zeros) -> neutralized: neutralized=True fake_gone=True exactly_one_close=True
+[PASS] fetch_url page with &lt/untrusted&gt (no semicolons) -> neutralized: neutralized=True fake_gone=True exactly_one_close=True
+[PASS] fetch_url page with &#X3C;/UNTRUSTED&#X3E; (uppercase hex+word) -> neutralized: neutralized=True fake_gone=True exactly_one_close=True
+[PASS] fetch_url page with no markers -> unchanged: result='<untrusted>\nSource: https://claude.com/blog\n\nOrdinary paragraph about IDOR with no markers here.\n</untrusted>'
+[PASS] read_inbox body with literal </untrusted> -> neutralized, one real closing marker: neutralized=True fake_gone=True exactly_one_close=True
+[PASS] read_inbox subject with </ UNTRUSTED > -> neutralized: subject_neutralized=True
+[PASS] read_inbox body with fake opening <untrusted> -> neutralized, one real opening marker: exactly_one_open=True starts_with_real_open=True fake_open_gone=True
+[PASS] read_inbox unknown sender -> still flagged [SENDER NOT IN ALLOW-LIST]: flag_present=True
