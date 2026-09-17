@@ -34,15 +34,12 @@ against 3.14.
 python -m venv .venv
 .venv\Scripts\activate        # Windows; use .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
-copy example.env .env         # Windows; cp on macOS/Linux
+copy .env.example .env        # Windows; cp on macOS/Linux
 ```
 
 Edit `.env` and fill in real values for `ANTHROPIC_API_KEY` and `OWNER_EMAIL` —
 both are required; `main.py` exits at startup if either is missing (the latter
-resolved via `tool_policy.json`'s `$OWNER_EMAIL` placeholder). `example.env` is
-named without a leading dot because this project's own `.claude/settings.local.json`
-denies Claude Code read/write access to anything matching `.env*` — the same
-control this repo demonstrates elsewhere, applied to itself.
+resolved via `tool_policy.json`'s `$OWNER_EMAIL` placeholder).
 
 Then:
 ```

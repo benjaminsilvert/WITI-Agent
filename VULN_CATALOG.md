@@ -1,6 +1,6 @@
 # VULN_CATALOG.md — WITI agent
 
-Master reference for the deliberately-vulnerable-by-design build. For each item: build the **v1** weakness, **exploit** it, apply the **v2 patch**, and tie the fix to a **principle**. Keep a three-sentence write-up per vuln (what I built / the issue / the fix) — that's the interview artifact.
+Master reference for the deliberately-vulnerable-by-design build. For each item: build the **v1** weakness, **exploit** it, apply the **v2 patch**, and tie the fix to a **principle**. Keep a three-sentence write-up per vuln (what I built / the issue / the fix) — that's the portfolio artifact.
 
 **How this fits the learning framework:** building, breaking, and patching WITI is the **"walk it" (action) piece for AI security** — your PortSwigger-lab equivalent for AI security *engineering*. Complementary structured practice you can track alongside it: PortSwigger's "Web LLM attacks" labs, and HackTheBox's "AI Red Teamer" job-role path (in HTB **Academy**). Those cover the attacker side; this project covers the builder/defender side and produces an artifact you can show.
 
@@ -23,49 +23,49 @@ Full detail for the core items A–H lives in `AGENT_SYSTEM_PROMPT.md`; this fil
 
 ## Part 2 — Extended functionality (bolt on for more attack surface)
 
-Each adds a **new vulnerability class** beyond A–H. Start with the star items — they carry the most interview weight.
+Each adds a **new vulnerability class** beyond A–H. Start with the star items — they carry the most weight.
 
 ### * I. Code-execution tool ("run this snippet" / shell)
 - **New class:** **RCE**, command injection, sandbox escape.
 - **Exploit:** injection makes the agent run arbitrary shell/Python — the ultimate excessive-agency case.
 - **Patch:** run in a locked-down sandbox (container, no network, allow-listed calls) or don't grant it at all; never build commands from untrusted input.
-- **Interview value:** shows you understand where agentic power becomes catastrophic. High.
+- **Value:** shows you understand where agentic power becomes catastrophic. High.
 
 ### * J. File / document ingestion (drop a PDF or doc to summarize)
 - **New class:** malicious-file parsing, **path traversal**, resource bombs.
 - **Exploit:** a PDF with hidden injected text; a filename like `../../etc/...` on save; a zip/XML bomb.
 - **Patch:** parse in isolation, sanitize extracted text as untrusted, safe/normalized file paths, size limits.
-- **Interview value:** bridges straight to your web-app pentest background (path traversal, malicious uploads). High.
+- **Value:** bridges straight to a web-app pentest background (path traversal, malicious uploads). High.
 
 ### K. Browser-automation tool (a real browser to research/log in)
 - **New class:** session/cookie abuse, action-on-your-behalf, live-page injection.
 - **Exploit:** it reuses your logged-in sessions; an injected page makes it click/act as you — the grocery-agent lesson at full power.
 - **Patch:** give the browser its **own profile/identity**, never reuse your real session, allow-list domains, HITL on actions.
-- **Interview value:** directly replays interview-2's identity-boundary lesson.
+- **Value:** a concrete identity-boundary lesson — never let an agent reuse your real session.
 
 ### L. Integrations vault + OAuth (store tokens for Gmail, Calendar, etc.)
 - **New class:** secrets management, **over-broad OAuth scopes**, token theft.
 - **Exploit:** injection exfiltrates stored tokens; an over-scoped Gmail grant lets the agent do far more than send.
 - **Patch:** least-privilege scopes (send-only vs full mailbox), encrypted secret store, short-lived tokens, never expose tokens to the model.
-- **Interview value:** concrete least-privilege + JIT-access story.
+- **Value:** concrete least-privilege + JIT-access story.
 
 ### M. Unattended scheduling (cron — runs while you sleep)
 - **New class:** removal of oversight amplifies everything; persistence fires unattended.
 - **Exploit:** a stored injection (from C or H) triggers on the next scheduled run with nobody watching.
 - **Patch:** no irreversible actions in autonomous mode; queue them for later approval; tighter allow-lists when unattended.
-- **Interview value:** shows you reason about blast radius and autonomy.
+- **Value:** shows you reason about blast radius and autonomy.
 
 ### N. Multi-user / sharing (a friend can query your coach)
 - **New class:** authN/authZ + **tenant isolation** at real scale.
 - **Exploit:** user B retrieves user A's notes/memory.
 - **Patch:** authenticate users; scope every data access by identity; ABAC on all stores.
-- **Interview value:** the multi-tenant chatbot question (interview 1), for real.
+- **Value:** the multi-tenant chatbot authorization scenario, for real.
 
 ### O. Self-modification (agent edits its own prompt / CLAUDE.md / tools)
 - **New class:** **guardrail tampering**, privilege escalation, persistence.
 - **Exploit:** injection makes the agent rewrite its own system prompt to drop the untrusted-content rule -> permanent compromise.
 - **Patch:** the agent's config/prompt is **read-only** to the agent; changes require you + review; integrity checks. Separate the control plane from the data plane.
-- **Interview value:** advanced and memorable — few candidates think of it.
+- **Value:** advanced and memorable — not commonly considered.
 
 ---
 
@@ -78,7 +78,7 @@ Each adds a **new vulnerability class** beyond A–H. Start with the star items 
 - System prompt leakage -> F
 - Vector/embedding weaknesses -> E (once you add Chroma)
 
-*"We follow established best practice (OWASP LLM Top 10, least privilege, identity as the trust bearer) and design novel controls where none exist yet" — that's the line that lands.*
+*"We follow established best practice (OWASP LLM Top 10, least privilege, identity as the trust bearer) and design novel controls where none exist yet."*
 
 ---
 

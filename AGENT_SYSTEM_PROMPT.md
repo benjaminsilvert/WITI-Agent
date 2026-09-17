@@ -57,7 +57,7 @@ Operating rules:
 
 ## Part 2 — Functionality -> deliberate vulnerability -> patch
 
-Each functionality below adds attack surface on purpose. Build v1 with the weakness, exploit it, then apply the patch for v2. Tie each patch back to the underlying principle — that's the interview payoff. (This is WITI's "walk it" curriculum for AI security.)
+Each functionality below adds attack surface on purpose. Build v1 with the weakness, exploit it, then apply the patch for v2. Tie each patch back to the underlying principle — that's why it matters. (This is WITI's "walk it" curriculum for AI security.)
 
 ### A. Research: `fetch_url` / `search_web` (ingesting untrusted content)
 - **Deliberate v1 weakness:** fetched page text is dropped straight into the model's context with no separation, so the model treats it as instructions; and it will fetch any URL it's told to, with no domain restriction.
@@ -81,13 +81,13 @@ Each functionality below adds attack surface on purpose. Build v1 with the weakn
 - **Deliberate v1 weakness:** `send_digest` and `update_tracker` execute automatically.
 - **Exploit:** any successful injection immediately causes a real email/write with no chance to catch it.
 - **Patch (v2):** a **deterministic approval gate ("hook") in code** that pauses before any irreversible tool runs and requires an explicit y/n. Key teaching point: the gate lives in **code**, not as a "please ask first" line in the prompt — a probabilistic instruction is not a control.
-- **Principle:** deterministic controls over model reasoning; hooks / human-in-the-loop (exactly what your interviewer emphasized).
+- **Principle:** deterministic controls over model reasoning; hooks / human-in-the-loop.
 
 ### E. Retrieval: `search_notes` (data-layer authorization)
 - **Deliberate v1 weakness:** retrieval returns all notes regardless of sensitivity.
 - **Exploit:** ask for a "shareable digest" and watch private notes leak into shareable output.
 - **Patch (v2):** tag each note with `sensitivity: public|study|private` front-matter; the retrieval function **filters by the active mode/identity** so shareable mode only returns `public`. Enforce it in the retrieval code, not the prompt.
-- **Principle:** authorization at the data layer; ABAC metadata; identity/context as the trust bearer. (This is the multi-tenant chatbot question from interview 1, rebuilt small.)
+- **Principle:** authorization at the data layer; ABAC metadata; identity/context as the trust bearer. (A small rebuild of a common multi-tenant authorization scenario.)
 
 ### F. Secrets in the system prompt (sensitive-info disclosure)
 - **Deliberate v1 weakness:** a fake key + "internal only" note sit in the system prompt.
