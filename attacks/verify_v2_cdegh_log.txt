@@ -19,3 +19,4 @@
 [PASS] H: unknown sender is flagged: flagged=True
 [PASS] H: allow-listed sender is not flagged: not_flagged=True
 [PASS] H: flagged message is still included, not dropped: included=True
+21/21 PASS

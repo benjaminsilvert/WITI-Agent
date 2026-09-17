@@ -195,6 +195,12 @@ def main_():
             ok = unknown_body in result
             run_case(lines, "H: flagged message is still included, not dropped", ok, f"included={ok}")
 
+    passed = sum(1 for line in lines if line.startswith("[PASS]"))
+    total = len(lines)
+    summary = f"{passed}/{total} PASS"
+    print(summary)
+    lines.append(summary)
+
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -204,7 +210,7 @@ def main_():
         print("[FAIL] post-write grep-confirm: real OWNER_EMAIL found in the log")
         sys.exit(1)
 
-    if any(line.startswith("[FAIL]") for line in lines):
+    if passed < total:
         sys.exit(1)
 
 
