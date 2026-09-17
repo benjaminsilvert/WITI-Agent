@@ -1,5 +1,8 @@
 # WITI — Project Status
 
+**Each `§` below is a dated session log recording state as of that session; the
+latest `§` is the current state.**
+
 _Audit date: 2026-08-04. This is a read-only audit: every claim below was produced by
 either (a) reading the actual file content on disk, or (b) running non-mutating,
 read-only shell commands (`git log`, `git status`, `git ls-files`, `find`, `ls`). No

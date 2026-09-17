@@ -156,8 +156,10 @@ call erase everything — so vuln C's two failure modes (poison vs. destroy) are
 demonstrable from the code alone, with no model involved. **The fix (applied — v2):**
 `append_memory` now rejects oversized content and tags every entry with a `source`
 field; `update_tracker` is now append-only, never overwriting prior history, and
-size-capped the same way. (Memory is still read back as trusted context on
-`read_memory` — no `<untrusted>` wrapping was added there; not yet applied.)
+size-capped the same way. `read_memory` now wraps its output in
+`<untrusted>...</untrusted>` markers too (added 2026-09-17), matching `read_inbox`'s
+pattern, so a poisoned entry read back in a later run can't pose as a trusted
+instruction.
 
 ---
 
@@ -231,7 +233,9 @@ with a `source` field. `update_tracker` is now append-only — it opens the trac
 in append mode and writes a new dated section, never truncating or replacing
 existing history — and is size-capped the same way. Both are also gated by the
 D fix (`attacks/MANUAL_VULN_DG.md`): a human must approve the write before it
-executes.
+executes. `read_memory` now wraps its output in `<untrusted>...</untrusted>`
+markers (2026-09-17), with `_neutralize_markers()` applied first, matching
+`read_inbox`'s pattern.
 
 Verify:
 ```

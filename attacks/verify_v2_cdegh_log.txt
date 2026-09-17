@@ -2,6 +2,8 @@
 [PASS] C: normal append_memory stores a 'source' field: stored=True has_source=True
 [PASS] C: update_tracker rejects oversized content, tracker unchanged: rejected=True unchanged=True
 [PASS] C: update_tracker is append-only, two calls leave both entries present: first_present=True second_present=True
+[PASS] C: read_memory output is wrapped in <untrusted>...</untrusted>: wrapped=True
+[PASS] C: read_memory neutralizes a </untrusted> marker inside a stored entry: neutralized=True fake_marker_gone=True exactly_one_real_close=True
 [PASS] D: input()='n' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
 [PASS] D: input()='' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
 [PASS] D: input()='yes' blocks append_memory via run_tool, memory unchanged: denied=True unchanged=True
