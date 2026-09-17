@@ -58,17 +58,20 @@ explanation — enforcement, not judgment.
   "Permission to use Bash with command curl ... has been denied" — before the command executed.
   A plain `curl` call carries no model-side reason to refuse, so the block is attributable to
   enforcement, not model judgment: the Finding 2 remediation holds.
-  Screenshot: `build_env_curl_bash_blocked.png`.
+
+  ![Bash curl to example.com denied at the permission layer, before execution](build-env/screenshots/build_env_curl_bash_blocked.png)
 - `PowerShell Invoke-WebRequest https://example.com` against the same target **reached
   execution** and failed on an unrelated `NonInteractive`-mode error — it was *not* intercepted
   by any deny rule. A failure is not a block: this confirmed live the "known gap" noted below,
   that `Bash(curl *)` does not cover the PowerShell egress path.
-  Screenshot: `build_env_invokewebrequest_powershell_allowed.png`.
+
+  ![PowerShell Invoke-WebRequest to example.com reaching execution, not blocked, before the PowerShell deny rule existed](build-env/screenshots/build_env_invokewebrequest_powershell_allowed.png)
 - A `PowerShell(Invoke-WebRequest *)` deny rule was then added and the same command **re-run:
   now denied** at the permission layer, before execution (the environment error no longer
   reached). This closes the demonstrated PowerShell path — but only that path; see the scope
   caveat under the rule in Current configuration.
-  Screenshot: `build_env_invokewebrequest_powershell_blocked.png`.
+
+  ![PowerShell Invoke-WebRequest to example.com denied at the permission layer after the new deny rule was added](build-env/screenshots/build_env_invokewebrequest_powershell_blocked.png)
 
 ### Finding 3: a control can do exactly what it says and still miss the threat
 
@@ -423,10 +426,10 @@ The same "verify against a live agent, not just a manual probe" step Layer 2 use
 
 Login through the fence (to Anthropic's own login hosts) succeeded, as expected, since those hosts are inside the allowed range.
 
-Screenshots: `attacks/screenshots/buildenv_claude_code_fence_test.png`,
-`attacks/screenshots/buildenv_claude_code_webfetch_blocked.png`,
-`attacks/screenshots/buildenv_claude_code_webfetch_allowed.png`,
-`attacks/screenshots/buildenv_claude_code_websearch.png`.
+![Live Claude Code fence test on the builder: Bash curl to example.com blocked, to api.anthropic.com allowed](build-env/screenshots/buildenv_claude_code_fence_test.png)
+![Live Claude Code WebFetch to example.com blocked behind the fence](build-env/screenshots/buildenv_claude_code_webfetch_blocked.png)
+![Live Claude Code WebFetch to www.anthropic.com/news allowed behind the fence](build-env/screenshots/buildenv_claude_code_webfetch_allowed.png)
+![Live Claude Code WebSearch succeeding behind the fence (server-side tool, Finding 8)](build-env/screenshots/buildenv_claude_code_websearch.png)
 
 Known limitation: Claude Code ran as `builderadmin`, which has `sudo` on the builder itself but no access to the gateway — this demo exercises the network fence, not a compromised-builder-attacks-the-gateway scenario (see Finding 7).
 

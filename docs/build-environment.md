@@ -52,6 +52,10 @@ either way here. That install does have its own independent *global*
 denied at the permission layer, before execution, for both a Bash and a PowerShell
 egress path.
 
+![Bash curl to example.com denied at the permission layer, before execution](../build-env/screenshots/build_env_curl_bash_blocked.png)
+![PowerShell Invoke-WebRequest to example.com reaching execution, not blocked, before the PowerShell deny rule existed](../build-env/screenshots/build_env_invokewebrequest_powershell_allowed.png)
+![PowerShell Invoke-WebRequest to example.com denied at the permission layer after the new deny rule was added](../build-env/screenshots/build_env_invokewebrequest_powershell_blocked.png)
+
 ## Layer 2 — OS / process identity
 **Enforces:** the build identity (`witi-agent`, a non-administrator Windows
 account) is denied write+delete on the project's control files
@@ -101,6 +105,11 @@ server-side tool — **succeeded behind the fence regardless**: the request
 asking Claude to search passes through the gateway like any other allowed API
 call, but the search itself (fetching results from the wider web) runs on
 Anthropic's own infrastructure and never touches the gateway.
+
+![Live Claude Code fence test on the builder: Bash curl to example.com blocked, to api.anthropic.com allowed](../build-env/screenshots/buildenv_claude_code_fence_test.png)
+![Live Claude Code WebFetch to example.com blocked behind the fence](../build-env/screenshots/buildenv_claude_code_webfetch_blocked.png)
+![Live Claude Code WebFetch to www.anthropic.com/news allowed behind the fence](../build-env/screenshots/buildenv_claude_code_webfetch_allowed.png)
+![Live Claude Code WebSearch succeeding behind the fence (server-side tool)](../build-env/screenshots/buildenv_claude_code_websearch.png)
 
 ## Limitations
 - **Shared IP.** As resolved on 2026-09-16: `api.anthropic.com`, `claude.ai`,
