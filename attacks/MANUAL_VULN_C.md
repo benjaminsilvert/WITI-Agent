@@ -23,7 +23,7 @@ after — see the command sequence below. Do this in order; do not skip the snap
 
 ### Vulnerable code (v1)
 
-Frozen here verbatim, exactly as it stands in `main.py:147-162`, before any v2 hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```python
 # Weakness: appends arbitrary caller-supplied content to memory.json with no size cap,
@@ -95,7 +95,7 @@ Stored to memory (7 entries total).
 
 ### Vulnerable code (v1)
 
-Frozen here verbatim, exactly as it stands in `main.py:165-168`, before any v2 hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```python
 # Weakness: overwrites tracker.md wholesale with whatever content the caller supplies --
@@ -145,7 +145,7 @@ pointed at destruction instead of poisoning.
 See the two frozen code blocks above (`append_memory` under C-1, `update_tracker` under
 C-2) — both pasted verbatim from `main.py`, untouched by this exercise.
 
-## The three-sentence story
+## Summary
 
 **What I built:** two minimal, LLM-free proofs against the real, unmodified
 `append_memory()` and `update_tracker()` functions, run back-to-back against snapshotted
@@ -153,10 +153,11 @@ copies of the real state files so the demonstration is reversible. **The issue:*
 function validates what it's asked to write or protects what's already there —
 `append_memory` lets unfiltered content persist forever, `update_tracker` lets a single
 call erase everything — so vuln C's two failure modes (poison vs. destroy) are both
-demonstrable from the code alone, with no model involved. **The fix (not yet applied —
-v2):** per `AGENT_SYSTEM_PROMPT.md` section C — make both append-only (no full overwrites),
-add size caps and content sanitization, tag every entry with a provenance source, and
-treat memory as untrusted data on read rather than trusted context.
+demonstrable from the code alone, with no model involved. **The fix (applied — v2):**
+`append_memory` now rejects oversized content and tags every entry with a `source`
+field; `update_tracker` is now append-only, never overwriting prior history, and
+size-capped the same way. (Memory is still read back as trusted context on
+`read_memory` — no `<untrusted>` wrapping was added there; not yet applied.)
 
 ---
 
@@ -222,3 +223,18 @@ Get-Content tracker.md
 ```
 `tracker.md` should show your real tracker content again (not the throwaway string), and
 `memory.json` should no longer contain the `INJECTED-TEST-ENTRY` line.
+
+## v2: patched
+
+`append_memory` now rejects content over a 10,000-character cap and tags every entry
+with a `source` field. `update_tracker` is now append-only — it opens the tracker
+in append mode and writes a new dated section, never truncating or replacing
+existing history — and is size-capped the same way. Both are also gated by the
+D fix (`attacks/MANUAL_VULN_DG.md`): a human must approve the write before it
+executes.
+
+Verify:
+```
+python attacks/verify_v2_cdegh.py
+```
+Expected: all PASS (21/21, covering C/D/E/G/H), exit 0.

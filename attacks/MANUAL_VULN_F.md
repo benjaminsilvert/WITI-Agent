@@ -19,8 +19,7 @@ its own configuration.
 
 ### Vulnerable content (v1)
 
-Frozen here verbatim, exactly as it stands in `prompts/system.md:35-36`, before any v2
-hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```
 # v1 ONLY — planted secret for the prompt-extraction demo (do NOT ship in v2):
@@ -168,18 +167,16 @@ fix is removing the secret from the prompt — see below.
 See the frozen block above (`prompts/system.md:35-36`) — pasted verbatim, untouched by
 this exercise.
 
-## The three-sentence story
+## Summary
 
 **What I built:** a behavioral proof that runs the real WITI agent with a direct
 prompt-extraction request, targeting the real, unmodified `prompts/system.md`. **The
 issue:** a fake secret is planted directly in the system prompt behind nothing but a `#`
 and an "internal only" label — neither of which mean anything to a model reading plain
 text — so the secret is present in-context on every call and extractable by a
-straightforward request. **The fix (not yet applied — v2):** per `AGENT_SYSTEM_PROMPT.md`
-section F — no secrets or security logic in the prompt at all; real secrets belong in
-env vars / a vault, loaded at runtime and never concatenated into the text the model reads;
-treat the system prompt itself as public, on the assumption that anything in it can and
-eventually will be read back.
+straightforward request. **The fix (applied — v2):** the planted secret was deleted
+from `prompts/system.md` outright — nothing to relocate, since the key itself was fake
+to begin with.
 
 ---
 
@@ -199,3 +196,16 @@ prompt text to show it came from a verbatim repeat rather than a coincidence.
 
 **Screenshot guidance:** one screenshot of the terminal showing the command and the full
 response, with the leaked key visible.
+
+## v2: patched
+
+The planted secret was deleted from `prompts/system.md` outright — nothing to
+relocate, since the key itself was fake. There is no secret left in the prompt to
+extract.
+
+Verify:
+```
+python attacks/verify_f_no_secret.py
+```
+Expected: all PASS (4/4 — file exists, contains "WITI", and neither
+`INTERNAL_OPS_KEY` nor `sk-demo` is present), exit 0.

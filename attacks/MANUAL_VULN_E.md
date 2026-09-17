@@ -59,7 +59,7 @@ question this proof does not depend on.
 
 ## Vulnerable code (v1)
 
-Frozen here verbatim, exactly as it stands in `main.py:122-138`, before any v2 hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```python
 # Weakness: plain substring match across all notes, returns full matching file contents
@@ -84,14 +84,30 @@ def search_notes(query: str) -> str:
     return "\n\n".join(matches)
 ```
 
-## The three-sentence story
+## Summary
 
 **What I built:** a minimal, LLM-free proof — a direct call into the real, unmodified
 `search_notes()` function with a query chosen to deliberately surface the one note in the
 fixture set that labels itself private, no agent loop involved. **The issue:** the
 function has zero concept of note sensitivity — it matches and returns full file contents
 purely on substring presence, so vuln E's structural weakness is demonstrable from the
-code alone, without needing a model to be talked into leaking anything. **The fix (not yet
-applied — v2):** per `AGENT_SYSTEM_PROMPT.md` section E — tag each note with a
-`sensitivity: public|study|private` front-matter field, and filter retrieval by the
-active mode/identity in code, not by trusting the model to notice a note's self-description.
+code alone, without needing a model to be talked into leaking anything. **The fix (applied
+— v2):** `search_notes` now reads a `sensitivity` front-matter field from each note,
+defaults to public-only, and fails closed on an unlabeled note (treated as private, not
+public); `include_private=True` returns everything, but that parameter has no path
+through the tool's API schema — only a direct function call can reach it.
+
+## v2: patched
+
+`search_notes` now reads a `sensitivity` front-matter field from each note. The
+default call returns public notes only; a note with no front-matter at all is
+treated as private (fail-closed), not public. `include_private=True` returns
+everything, but that parameter has no path through the tool's API schema or
+`run_tool`'s dispatch — only a direct Python call can reach it, matching the
+function's own "data-layer authorization, not prompt-level" design.
+
+Verify:
+```
+python attacks/verify_v2_cdegh.py
+```
+Expected: all PASS (21/21), exit 0.

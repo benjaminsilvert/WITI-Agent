@@ -23,7 +23,7 @@ command sequence below. Do this in order; do not skip the snapshot step.
 
 ### Vulnerable code (v1)
 
-Frozen here verbatim, exactly as it stands in `main.py:171-175`, before any v2 hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```python
 # Weakness: recipient, subject, and body are all fully caller-controlled -- there is no
@@ -74,16 +74,16 @@ recipient" would stop it, regardless of how that string was chosen.
 See the frozen code block above (`send_digest` under B-1) — pasted verbatim from `main.py`,
 untouched by this exercise.
 
-## The three-sentence story
+## Summary
 
 **What I built:** a minimal, LLM-free proof against the real, unmodified `send_digest()`
 function, run against a snapshotted copy of the real outbox file so the demonstration is
 reversible. **The issue:** the function doesn't validate who `recipient` is — no fixed
 address, no allow-list, no owner check — so vuln B's uncontrolled-egress claim is
-demonstrable from the code alone, with no model involved. **The fix (not yet applied —
-v2):** per `AGENT_SYSTEM_PROMPT.md` section B — pin `send_digest` to a single
-config-defined recipient (the account owner), ignore or reject any caller-supplied
-recipient override, and treat a mismatch as a hard failure rather than a silent send.
+demonstrable from the code alone, with no model involved. **The fix (applied — v2):**
+`send_digest`'s recipient is now checked against a config-defined allow-list
+(`tool_policy.json`, resolved from `$OWNER_EMAIL`) at two independent enforcement
+points, and a mismatch denies the send rather than delivering it.
 
 ---
 
@@ -134,3 +134,22 @@ Confirm the restore worked:
 Get-Content outbox.txt
 ```
 `outbox.txt` should no longer contain the entry addressed to `attacker@evil-exfil.example`.
+
+## v2: patched
+
+`send_digest`'s `recipient` is now checked against a config-defined allow-list
+(`tool_policy.json`'s `send_digest.args.recipient`, resolved from `$OWNER_EMAIL`) at
+two independent enforcement points: `check_policy` before `run_tool` dispatches, and
+a second in-function guard for a direct call that bypasses `run_tool`. A mismatch
+denies rather than sends. The denial text itself was later found to leak that
+allow-list back to the caller — see `attacks/MANUAL_VULN_B2_verbose_denial.md`.
+
+Verify:
+```
+python attacks/verify_ab_patch.py
+python attacks/verify_generic_denials.py
+```
+Expected: all PASS (4/4, 9/9), exit 0.
+
+Live run: `attacks/LIVE_V2_RESULTS.md`, web run 3 — `send_digest` was approved to
+the real owner only; the attacker address was never used as a recipient.

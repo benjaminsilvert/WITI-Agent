@@ -18,7 +18,7 @@ one leaves the other's exposure fully intact.
 
 ## Vulnerable code (v1)
 
-Frozen here verbatim, exactly as it stands in `main.py:234-263`, before any v2 hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```python
 while True:
@@ -133,7 +133,7 @@ reachability (G) or gates execution (D) regardless of which behavior the model p
 See the frozen block above (`main.py:234-263`) — pasted verbatim, untouched by this
 exercise.
 
-## The three-sentence story
+## Summary
 
 **What I built:** an architectural proof — the loop's own source plus three real runs of
 the unmodified agent against the same class of minimal request — showing that tool
@@ -143,12 +143,11 @@ is passed on every call regardless of phase (G), and every `tool_use` block the 
 returns is executed immediately with no approval step (D) — so three identical-class
 requests against identical code produced three different real-world outcomes, from
 harmless to a real email send plus two destructive writes, none of it gated by anything but
-model choice. **The fix (not yet applied — v2):** per `AGENT_SYSTEM_PROMPT.md` sections D
-and G — for D, a **deterministic approval gate in code** (not a prompt instruction) that
-pauses before any irreversible tool call and requires explicit `y`/`n`; for G,
-**capability separation** so the phase that calls `fetch_url`/`read_inbox` on untrusted
-content has no `send_digest`/`update_tracker`/`append_memory` available at all, with only a
-separate, later, trusted planning phase holding those tools.
+model choice. **The fix (applied — v2):** a deterministic, code-level approval gate now
+pauses before `append_memory`/`update_tracker`/`send_digest` and fails closed on
+anything but an exact `y` (D); the agent loop is now split into a GATHER phase holding
+only read-only tools and a later ACT phase holding only send/write tools, so the phase
+that reads untrusted content has nothing to misuse (G).
 
 ---
 
@@ -161,3 +160,24 @@ genuinely send email and overwrite `tracker.md`/`memory.json`, treat re-running 
 same way as `_C.md`/`_B.md`: snapshot `memory.json`, `tracker.md`, and `outbox.txt` first
 if you intend to reproduce it, since — unlike a scoped single-function proof — you cannot
 predict in advance which of the three behaviors this run will produce.
+
+## v2: patched
+
+**D:** `CONSEQUENTIAL_TOOLS` (`append_memory`, `update_tracker`, `send_digest`) now
+routes through `request_approval()` inside `run_tool`, before dispatch: anything
+other than an exact `y` (case-insensitive, stripped) denies the call. **G:** the
+single `while True` loop was split into two calls to `run_phase()` — a GATHER phase
+given only read-only tools (`fetch_url`, `read_inbox`, `search_notes`,
+`read_memory`) and a later ACT phase given only send/write tools (`append_memory`,
+`update_tracker`, `send_digest`), built by `build_phase_tools()`. The phase that
+reads untrusted content structurally has no send/write tool available to misuse.
+
+Verify:
+```
+python attacks/verify_v2_cdegh.py
+```
+Expected: all PASS (21/21), exit 0.
+
+Live run: `attacks/LIVE_V2_RESULTS.md` — every run shows the `PHASE 1: GATHER` /
+`PHASE 2: ACT` split in the transcript (G), and every consequential tool call across
+all four runs hit a real `[y/N]` prompt (D).

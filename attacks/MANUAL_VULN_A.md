@@ -44,7 +44,7 @@ Terminal screenshot of this run: `attacks/screenshots/vuln_A_fetch_url_run.png`.
 
 ## Vulnerable code (v1)
 
-Frozen here verbatim, exactly as it stands in `main.py:107-119`, before any v2 hardening:
+Frozen here verbatim, as it stood before hardening (see git history):
 
 ```python
 # Weaknesses: (1) no domain/port allow-list before urlopen, (2) no untrusted-data wrapping on return
@@ -63,16 +63,17 @@ def fetch_url(url: str) -> str:
     return text[:FETCH_CHAR_CAP]
 ```
 
-## The three-sentence story
+## Summary
 
 **What I built:** a minimal, LLM-free proof — a PowerShell `HttpListener` serving a page
 with a hidden injected instruction, fetched directly through the real `fetch_url()`
 function with no agent loop involved. **The issue:** the function has zero domain
 restriction and performs zero untrusted-content wrapping, so both structural weaknesses
 in vuln A are demonstrable from the code alone, without needing to first convince a model
-to misbehave. **The fix (not yet applied — v2):** per `AGENT_SYSTEM_PROMPT.md` section A —
-wrap fetched content in `<untrusted>...</untrusted>` markers before it ever reaches the
-model, and enforce a domain allow-list in `fetch_url` itself, in code, not in the prompt.
+to misbehave. **The fix (applied — v2):** fetched content is now wrapped in
+`<untrusted>...</untrusted>` markers before it ever reaches the model, and `fetch_url`
+enforces a host+path allow-list in code (`check_policy` / `_fetch_url_policy_check`),
+not the prompt.
 
 ## Relationship to attacks/exfil_demo.py
 
@@ -81,3 +82,26 @@ behavioral result). This asks "does the tool even try to stop it?" (answer: no �
 structural result, and the more fundamental of the two, since it's true regardless of which
 model or how many attempts). Together they cover both halves of vuln A's risk: the code has
 no safeguard, and the current model's own judgment is the only thing standing in the gap.
+
+## v2: patched
+
+`fetch_url` now enforces a host+path allow-list before ever calling `urlopen`
+(`_fetch_url_policy_check`, `check_policy`), applied at two independent enforcement
+points (the `run_tool`/`check_policy` dispatch path, and an in-function guard for a
+direct call), and re-checks the same allow-list on every redirect hop
+(`_PolicyRedirectHandler`). On success, the returned page text is wrapped in
+`<untrusted>...</untrusted>` markers, applied after the character cap so the closing
+marker can't be truncated away.
+
+Verify:
+```
+python attacks/verify_ab_patch.py
+python attacks/verify_path_and_redirect.py
+python attacks/verify_a_untrusted_wrap.py
+python attacks/verify_marker_breakout.py
+python attacks/verify_generic_denials.py
+```
+Expected: all PASS (4/4, 11/11, 3/3, 10/10, 9/9), exit 0.
+
+Live run: `attacks/LIVE_V2_RESULTS.md` — every `fetch_url` denial across all four
+live runs returned only the generic denial string, never the allow-list itself.
