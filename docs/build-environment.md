@@ -7,32 +7,41 @@ detail.
 
 **Scope:** these controls protect the *development environment* — the identity and
 network path used to build WITI — not WITI itself. WITI's own deliberate
-vulnerabilities (A–H) are a separate track; see `STATUS.md`.
+vulnerabilities (A–H) are a separate track; see `README.md`.
 
 ## Diagram
 
+Two separate environments — nothing connects them. The host is Layers 1–2 only
+(no network fence); Hyper-V is Layers 3–4 only (no file-level locks), and WITI
+itself has never run inside it.
+
 ```mermaid
 graph TD
-    A["Host (Windows)<br/>silve — human developer identity"]
-    B["Host (Windows)<br/>witi-agent — restricted build identity<br/>Layer 1: Claude Code deny-rules<br/>Layer 2: icacls file locks (deny write+delete)"]
-    C["Hyper-V"]
-    D["Builder VM — 10.10.10.2<br/>witi-lab private switch only, no direct internet route<br/>Layer 3: network-isolated Claude Code build host"]
-    E["Gateway VM — dual-homed<br/>eth1 10.10.10.1 (witi-lab, lab side) / eth0 (Default Switch, internet side)<br/>Layer 4: nftables default-deny forward chain"]
-    F["Internet"]
-    G["Anthropic API<br/>160.79.104.0/23 : 443 — the only allowed destination"]
+    subgraph HOST["Windows host — no gateway, direct internet"]
+        SILVE["silve<br/>everyday dev (Cursor Claude Code session)<br/>Layer 1 applies here: this project's<br/>.claude/settings.local.json"]
+        WITIAGENT["witi-agent<br/>non-admin account, its own separate<br/>Claude Code install (own ~/.claude config —<br/>NOT this project's Layer 1 rules)<br/>Layer 2: icacls deny write+delete on control files"]
+        INET1["Internet"]
+        SILVE -->|direct, unrestricted| INET1
+        WITIAGENT -->|direct, unrestricted — no network fence| INET1
+    end
 
-    A -->|owns and edits the repo| B
-    B -->|runs under| C
-    C -->|hosts| D
-    D -->|only network path: eth1| E
-    E -->|"accept: tcp/443 to 160.79.104.0/23<br/>drop: everything else"| F
-    F --> G
+    subgraph HYPERV["Hyper-V — separate environment"]
+        BUILDER["Builder VM — 10.10.10.2<br/>witi-lab private switch only<br/>Claude Code as builderadmin"]
+        GATEWAY["Gateway VM — dual-homed<br/>eth1 10.10.10.1 (witi-lab) / eth0 (Default Switch)<br/>Layer 4: nftables default-deny forward chain"]
+        INET2["Internet"]
+        BUILDER -->|only network path: eth1| GATEWAY
+        GATEWAY -->|"accept: tcp/443 to 160.79.104.0/23<br/>(API, login, www) + DNS to 1.1.1.1/8.8.8.8<br/>drop: everything else, incl. all IPv6"| INET2
+    end
 ```
 
 ## Layer 1 — Coding-agent harness
-**Enforces:** `deny` rules in `.claude/settings.local.json` block specific
-tools/commands outright, not just require approval — e.g. reading `.env`, `curl`,
-`PowerShell(Invoke-WebRequest *)`.
+**Enforces:** `deny` rules in this project's `.claude/settings.local.json` block
+specific tools/commands outright, not just require approval — e.g. reading
+`.env`, `curl`, `PowerShell(Invoke-WebRequest *)`. This file, and Layer 1
+generally, applies to Claude Code sessions run from this project directory
+(day-to-day, that's `silve`'s Cursor session) — it does not apply to
+`witi-agent`'s separate Claude Code install, which has its own independent
+`~/.claude` config and never reads this file at all.
 
 **Verified:** tested against a command with no model-side reason to refuse
 (`curl`), so a block is attributable to enforcement, not model judgment — confirmed
@@ -47,10 +56,18 @@ account) is denied write+delete on the project's control files
 containing folders — enforced by Windows ACLs (`icacls`), independent of the
 agent harness.
 
-**Verified:** `runas /user:witi-agent` probes, then a live, separately-installed
-Claude Code process running as `witi-agent`, both attempting the same
-writes/reads/deletes — refused at the OS layer (`EPERM` /
-`UnauthorizedAccessException`) before any Claude Code permission logic ran.
+**Verified:**
+- Original lock (writes/reads): a live, separately-installed Claude Code process
+  running as `witi-agent` attempted to write `tool_policy.json` and read `.env`
+  — both refused at the OS layer (`EPERM` / `UnauthorizedAccessException`)
+  before any Claude Code permission logic ran.
+- Finding 10 (delete/rename): PowerShell commands (`Remove-Item`, `Rename-Item`,
+  `Add-Content`) run as `witi-agent` — delete and rename both denied, while an
+  unlocked file's write still succeeded (folder-level deny doesn't collaterally
+  block normal state writes). The project-folder rename itself was **not**
+  live-tested — any process holding an open handle inside it would block the
+  rename regardless of the ACL, so a live attempt wouldn't isolate what the
+  permission alone is responsible for.
 
 ## Layer 3 — Sandbox / VM
 **Enforces:** the build identity gets its own machine. A private Hyper-V switch
@@ -58,24 +75,33 @@ writes/reads/deletes — refused at the OS layer (`EPERM` /
 separate gateway VM is the only path out.
 
 **Verified:** routing and NAT proven (the builder reaches the internet only via
-the gateway); a live Claude Code install on the builder, run under its own
-separate account, exercised against the Layer 4 fence below.
+the gateway); a live Claude Code install on the builder, run as `builderadmin`,
+exercised against the Layer 4 fence below.
 
 ## Layer 4 — Network egress
-**Enforces:** default-deny outbound on the gateway's `nftables` forward chain,
-with one allow rule for Anthropic's published API range (`160.79.104.0/23`,
-tcp/443) and DNS to `1.1.1.1`/`8.8.8.8`.
+**Enforces:** default-deny outbound on the gateway's `nftables` forward chain —
+both the `ip filter` table (one allow rule for Anthropic's published API range,
+`160.79.104.0/23` tcp/443, plus DNS to `1.1.1.1`/`8.8.8.8`) and a separate `ip6
+filter` table with no accepts at all, dropping every forwarded IPv6 packet
+outright so an IPv4-only rule set can't be bypassed over v6.
 
 **Verified:** two-sided proof from the builder (a disallowed host times out, an
 allowed Anthropic host responds normally, with only the rule changed between
-the two); repeated against a live Claude Code process using both a client-side
-shell command and a client-side fetch tool.
+the two). Repeated against a live Claude Code process: Bash `curl` and WebFetch
+were both blocked for `example.com` and allowed for Anthropic hosts — WebFetch's
+result is **strong evidence, not proof**, that it executes from the builder and
+is subject to the fence, since a vague client-side error is consistent with
+that without directly confirming where the request originated. WebSearch — a
+server-side tool — **succeeded behind the fence regardless**: its traffic runs
+from Anthropic's own infrastructure and never reaches the gateway at all.
 
 ## Limitations
-- **Shared IP.** Anthropic's published API range and its other hosts (login,
-  installer downloads) don't all sit in the same IP block, and several
-  unrelated hostnames resolve to the same address — an IP-level allow-rule
-  can't distinguish "the API" from anything else answering at that address.
+- **Shared IP.** `api.anthropic.com`, `claude.ai`, `claude.com`,
+  `platform.claude.com`, and `www.anthropic.com` — the API plus every login
+  host — all resolve to the same address inside Anthropic's published range, so
+  an IP-level allow-rule can't distinguish "the API" from any of the others
+  answering at that address. Only `downloads.claude.ai` resolves outside the
+  range.
 - **Server-side tools.** A server-side tool runs from Anthropic's own
   infrastructure — its traffic looks identical to any other allowed API call at
   the gateway, so the fence can't see or restrict what it does. Only
@@ -91,13 +117,41 @@ shell command and a client-side fetch tool.
   one-off need (e.g. an installer download) is done as a temporary, unsaved
   rule, closed by reloading the saved config from disk — a manual process, not
   an automated expiry.
-- **Remaining Layer 2 limits.** The build identity can still modify packages
-  installed in its Python virtual environment and can still edit note
-  front-matter; the tool policy file is resolved relative to the working
-  directory rather than an absolute path; and this containment applies to the
-  separate build identity and its VM, not to everyday development done under
-  the primary user account.
+- **No single environment has both controls.** `witi-agent` (the host identity)
+  is file-locked (Layer 2) but has no network fence at all — its traffic goes
+  straight to the internet, unrestricted. The builder VM is network-fenced
+  (Layer 3/4) but has no file-level locks of its own — it's a separate machine
+  that has never even held a copy of WITI's `tool_policy.json` or `main.py`.
+- **Finding 3's gap is closed only for `witi-agent`.** The project's
+  `.claude/settings.local.json` denies the `Edit`/`Write` tools on itself, but
+  Claude Code has its own internal permission-write mechanism that those
+  tool-scoped rules don't cover. That gap is closed for the `witi-agent`
+  identity specifically, by Layer 2's icacls lock on the same file — not by
+  anything in Layer 1 itself, and not for any other identity.
+- **The `Invoke-WebRequest` deny rule is a speed bump, not a boundary.** It
+  matches one command name; PowerShell aliases (`curl`, `wget`, `iwr`), the
+  sibling `Invoke-RestMethod`/`irm`, and direct .NET calls (e.g.
+  `[System.Net.WebClient]`) are all unmatched.
+- **The fence demo doesn't cover a compromised builder attacking the gateway.**
+  Claude Code on the builder ran as `builderadmin`, which has `sudo` on the
+  builder itself but no access to the gateway.
+- **WITI itself was never run inside the sandbox.** The fence demo installed
+  and exercised Claude Code only — WITI's own Python dependencies would need
+  PyPI access, which the fence blocks — so this containment has never been
+  proven against a real WITI run.
+- **DNS is a second outbound channel.** The gateway's DNS allow rules
+  (`ip daddr { 1.1.1.1, 8.8.8.8 } udp/tcp dport 53 accept`) carry no interface
+  restriction and don't inspect query content — a compromised builder could
+  tunnel data out inside DNS lookups themselves, a channel the HTTPS
+  allow-rule's restrictions don't touch.
+- **Remaining Layer 2 limits (Finding 10).** The build identity can still
+  modify packages installed in its Python virtual environment and can still
+  edit note front-matter; the tool policy file is resolved relative to the
+  working directory rather than an absolute path; and this containment applies
+  to the separate build identity, not to everyday development done under the
+  primary user account.
 
 ## See also
 - `BUILD_ENV_HARDENING.md` — full findings, verification transcripts, and rationale.
-- `infra/gateway/README.md` — where the exported firewall config comes from.
+- `infra/gateway/nftables.conf` — the exported firewall ruleset itself.
+- `infra/gateway/README.md` — where that export comes from.
