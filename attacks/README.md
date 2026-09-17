@@ -1,5 +1,12 @@
 # attacks/exfil_demo.py — flagship vuln A+B exploit
 
+> **v1-only:** targets the pre-hardening code path via its own hand-rolled loop, not
+> `main()` — bypasses the v2 GATHER/ACT phase split and never calls `load_policy()` /
+> sets `TOOL_POLICY`, so it now crashes on the first tool call against current
+> `check_policy()` (confirmed in a prior read-only inspection). The attempt log below
+> is accurate for what it tested at the time it ran. For a live test against the real
+> `main()`, its allow-list, and its approval gate, see `attacks/live_v2_harness.py`.
+
 Targets the chain described in `VULN_CATALOG.md` (A+B) and detailed in
 `AGENT_SYSTEM_PROMPT.md`: **A** — `fetch_url` drops fetched page text straight into the
 model's context with no `<untrusted>` boundary and no domain allow-list; **B** —
