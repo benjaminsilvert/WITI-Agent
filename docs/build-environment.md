@@ -11,15 +11,16 @@ vulnerabilities (A–H) are a separate track; see `README.md`.
 
 ## Diagram
 
-Two separate environments — nothing connects them. The host is Layers 1–2 only
-(no network fence); Hyper-V is Layers 3–4 only (no file-level locks), and WITI
-itself has never run inside it.
+Two separate environments. The host is not on the `witi-lab` switch — Hyper-V's
+network fence (Layers 3–4) has no bearing on host traffic, and the host's file
+locks (Layers 1–2) have no bearing on the builder VM. WITI itself has never run
+inside the Hyper-V environment.
 
 ```mermaid
 graph TD
     subgraph HOST["Windows host — no gateway, direct internet"]
         SILVE["silve<br/>everyday dev (Cursor Claude Code session)<br/>Layer 1 applies here: this project's<br/>.claude/settings.local.json"]
-        WITIAGENT["witi-agent<br/>non-admin account, its own separate<br/>Claude Code install (own ~/.claude config —<br/>NOT this project's Layer 1 rules)<br/>Layer 2: icacls deny write+delete on control files"]
+        WITIAGENT["witi-agent<br/>non-admin account, its own separate<br/>Claude Code install (own ~/.claude global config)<br/>Layer 2: icacls deny write+delete on control files"]
         INET1["Internet"]
         SILVE -->|direct, unrestricted| INET1
         WITIAGENT -->|direct, unrestricted — no network fence| INET1
@@ -37,11 +38,14 @@ graph TD
 ## Layer 1 — Coding-agent harness
 **Enforces:** `deny` rules in this project's `.claude/settings.local.json` block
 specific tools/commands outright, not just require approval — e.g. reading
-`.env`, `curl`, `PowerShell(Invoke-WebRequest *)`. This file, and Layer 1
-generally, applies to Claude Code sessions run from this project directory
-(day-to-day, that's `silve`'s Cursor session) — it does not apply to
-`witi-agent`'s separate Claude Code install, which has its own independent
-`~/.claude` config and never reads this file at all.
+`.env`, `curl`, `PowerShell(Invoke-WebRequest *)`. This file is readable by any
+account — Layer 2 denies `witi-agent` write and delete on it, not read (see
+below). Whether `witi-agent`'s own separately-installed Claude Code (the Layer 2
+live-agent test, below) was actually launched from this project's directory,
+and so had this file's rules applied to it, is **not stated** in
+`BUILD_ENV_HARDENING.md` or `STATUS.md` §12–§13 — undetermined, not asserted
+either way here. That install does have its own independent *global*
+`~/.claude` config regardless of which project directory it was run from.
 
 **Verified:** tested against a command with no model-side reason to refuse
 (`curl`), so a block is attributable to enforcement, not model judgment — confirmed
@@ -70,9 +74,10 @@ agent harness.
   permission alone is responsible for.
 
 ## Layer 3 — Sandbox / VM
-**Enforces:** the build identity gets its own machine. A private Hyper-V switch
-(`witi-lab`) hosts the builder VM with no direct internet route of its own; a
-separate gateway VM is the only path out.
+**Enforces:** `builderadmin` (the builder VM's own Claude Code identity —
+separate from the host's `witi-agent`) gets its own machine. A private Hyper-V
+switch (`witi-lab`) hosts the builder VM with no direct internet route of its
+own; a separate gateway VM is the only path out.
 
 **Verified:** routing and NAT proven (the builder reaches the internet only via
 the gateway); a live Claude Code install on the builder, run as `builderadmin`,
@@ -92,16 +97,17 @@ were both blocked for `example.com` and allowed for Anthropic hosts — WebFetch
 result is **strong evidence, not proof**, that it executes from the builder and
 is subject to the fence, since a vague client-side error is consistent with
 that without directly confirming where the request originated. WebSearch — a
-server-side tool — **succeeded behind the fence regardless**: its traffic runs
-from Anthropic's own infrastructure and never reaches the gateway at all.
+server-side tool — **succeeded behind the fence regardless**: the request
+asking Claude to search passes through the gateway like any other allowed API
+call, but the search itself (fetching results from the wider web) runs on
+Anthropic's own infrastructure and never touches the gateway.
 
 ## Limitations
-- **Shared IP.** `api.anthropic.com`, `claude.ai`, `claude.com`,
-  `platform.claude.com`, and `www.anthropic.com` — the API plus every login
-  host — all resolve to the same address inside Anthropic's published range, so
-  an IP-level allow-rule can't distinguish "the API" from any of the others
-  answering at that address. Only `downloads.claude.ai` resolves outside the
-  range.
+- **Shared IP.** As resolved on 2026-09-16: `api.anthropic.com`, `claude.ai`,
+  `claude.com`, `platform.claude.com`, and `www.anthropic.com` all resolve to
+  the same address inside Anthropic's published range — an IP-level allow-rule
+  can't distinguish "the API" from any of the others answering at that address.
+  Only `downloads.claude.ai` resolves outside the range.
 - **Server-side tools.** A server-side tool runs from Anthropic's own
   infrastructure — its traffic looks identical to any other allowed API call at
   the gateway, so the fence can't see or restrict what it does. Only
@@ -122,12 +128,14 @@ from Anthropic's own infrastructure and never reaches the gateway at all.
   straight to the internet, unrestricted. The builder VM is network-fenced
   (Layer 3/4) but has no file-level locks of its own — it's a separate machine
   that has never even held a copy of WITI's `tool_policy.json` or `main.py`.
-- **Finding 3's gap is closed only for `witi-agent`.** The project's
+- **Finding 3's gap is closed by Layer 2, not Layer 1.** The project's
   `.claude/settings.local.json` denies the `Edit`/`Write` tools on itself, but
   Claude Code has its own internal permission-write mechanism that those
-  tool-scoped rules don't cover. That gap is closed for the `witi-agent`
-  identity specifically, by Layer 2's icacls lock on the same file — not by
-  anything in Layer 1 itself, and not for any other identity.
+  tool-scoped rules don't cover. What actually stops `witi-agent` from
+  unlocking that file is Layer 2's OS-level icacls write+delete deny on it —
+  independent of whether `witi-agent`'s Claude Code sessions even load this
+  project's Layer 1 rules at all (undetermined, see Layer 1 above). Not closed
+  for any other identity.
 - **The `Invoke-WebRequest` deny rule is a speed bump, not a boundary.** It
   matches one command name; PowerShell aliases (`curl`, `wget`, `iwr`), the
   sibling `Invoke-RestMethod`/`irm`, and direct .NET calls (e.g.

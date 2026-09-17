@@ -1,11 +1,15 @@
 # WITI — Walk-It-Talk-It
 
 WITI is a deliberately vulnerable AI agent: a small Claude-powered assistant (web
-fetch, notes search, persistent memory, a progress tracker, an inbox reader, and an
-email-digest sender) built with eight intentional vulnerabilities (A–H), then
-exploited against its own unmodified code, then hardened. Every claim below —
-weakness, fix, and proof — is backed by a script or transcript in `attacks/`, not
-narrative alone.
+fetch, notes search, persistent memory, a progress tracker, an inbox reader, and a
+digest sender) built with eight intentional vulnerabilities (A–H). `send_digest`
+writes to a local `outbox.txt` file — no real email is ever sent, in either the
+vulnerable or the hardened version. Some weaknesses were proven structurally, by
+calling the vulnerable functions directly; the A+B exfiltration chain and F's
+prompt-extraction attempts were also tried live against the real model, which
+refused every attempt. All eight were then hardened. Every claim below — weakness,
+fix, and proof — is backed by a script or transcript in `attacks/`, not narrative
+alone.
 
 ## Before / after, by vulnerability
 
@@ -20,6 +24,30 @@ narrative alone.
 | F | A fake secret sat directly in the system prompt behind a `#` comment and an "internal only" label. | The secret was deleted outright — nothing to relocate, since it was fake. | `verify_f_no_secret.py` | [`attacks/MANUAL_VULN_F.md`](attacks/MANUAL_VULN_F.md) |
 | G | The full 7-tool list was passed on every call, regardless of phase — no separation between reading untrusted content and acting. | The loop is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only). | `verify_v2_cdegh.py` | [`attacks/MANUAL_VULN_DG.md`](attacks/MANUAL_VULN_DG.md) |
 | H | `read_inbox` returned raw message bodies with no untrusted-content boundary. | Output wrapped in `<untrusted>` markers; senders not on an allow-list are flagged, not silently trusted (still included, not dropped). | `verify_v2_cdegh.py`, `verify_marker_breakout.py` | [`attacks/MANUAL_VULN_H.md`](attacks/MANUAL_VULN_H.md) |
+
+## Setup
+
+Requires Python 3.10+ (the codebase uses `X | None` type hints); developed
+against 3.14.
+
+```
+python -m venv .venv
+.venv\Scripts\activate        # Windows; use .venv/bin/activate on macOS/Linux
+pip install -r requirements.txt
+copy example.env .env         # Windows; cp on macOS/Linux
+```
+
+Edit `.env` and fill in real values for `ANTHROPIC_API_KEY` and `OWNER_EMAIL` —
+both are required; `main.py` exits at startup if either is missing (the latter
+resolved via `tool_policy.json`'s `$OWNER_EMAIL` placeholder). `example.env` is
+named without a leading dot because this project's own `.claude/settings.local.json`
+denies Claude Code read/write access to anything matching `.env*` — the same
+control this repo demonstrates elsewhere, applied to itself.
+
+Then:
+```
+python main.py
+```
 
 ## How to verify
 
@@ -41,8 +69,11 @@ since that's what's under test.
 
 WITI's own vulnerabilities (above) are one threat model; the environment used to
 *build* WITI is a separate one, with its own hardening: a coding-agent permission
-harness, OS-level file locks on a restricted build identity, and a two-VM
-network-fenced sandbox for that identity's own Claude Code install. See
+harness and OS-level file locks on `witi-agent` (a restricted host identity —
+file-locked, but with no network fence of its own), plus a separate two-VM
+sandbox running its own Claude Code install as `builderadmin` (network-fenced,
+but with no file-level locks of its own). These are two different identities in
+two different places, not the same protection twice. See
 [`docs/build-environment.md`](docs/build-environment.md) for a summary with a
 diagram, [`BUILD_ENV_HARDENING.md`](BUILD_ENV_HARDENING.md) for the full findings
 and verification transcripts, and
@@ -54,11 +85,13 @@ firewall ruleset itself.
 [`attacks/LIVE_V2_RESULTS.md`](attacks/LIVE_V2_RESULTS.md) records four runs of the
 real, unmodified `main()` against both attack scenarios (inbox injection, web-page
 injection with an in-memory-only allow-list bypass), with a real interactive
-approval gate. As that document says of itself: each run is a single data point,
-not proof — a model declining to comply (or an operator declining to approve) on
-one occasion says nothing about the next payload or the next approval decision. The
-structural controls in the table above are what's meant to hold regardless of any
-single run's outcome.
+approval gate. Three runs were conclusive (the payload reached the model); one was
+inconclusive — a policy-bypass bug meant that run's payload never reached the
+model at all, later fixed. As that document says of itself: each run is a single
+data point, not proof — a model declining to comply (or an operator declining to
+approve) on one occasion says nothing about the next payload or the next approval
+decision. The structural controls in the table above are what's meant to hold
+regardless of any single run's outcome.
 
 ## Known limitations
 
@@ -82,8 +115,22 @@ single run's outcome.
   inbox message is still sitting there during the GATHER phase.
 - **No egress content filter on `send_digest`.** The recipient is pinned to an
   allow-list; the subject and body are not inspected at all. An injected
-  instruction that gets the agent to email real notes or other sensitive content
-  to the legitimate owner would still succeed.
+  instruction that gets the agent to send real notes or other sensitive content
+  (written to the local outbox) to the legitimate owner would still succeed.
+- **`append_memory`'s `source` field is a constant, not real provenance.** Via
+  the tool interface (`run_tool`), `source` is always `"agent"` —
+  `append_memory(content)` is called with no way for the model to set anything
+  else. The field records that a write happened through the agent, not where
+  the content actually came from (e.g. copied verbatim from an untrusted page).
+- **WITI's runtime has no identity separation of its own.** The build-environment
+  hardening above protects a separate *build* identity (`witi-agent` plus the
+  builder VM); a third, planned *runtime* identity for WITI itself was never
+  built — `main.py` runs under whatever account runs it, typically the
+  developer's own.
+- **Design docs describe the original, broader plan, not what was built.**
+  `AGENT_SYSTEM_PROMPT.md` and `VULN_CATALOG.md` still describe a `search_web`
+  tool and real Gmail sending — neither exists in `main.py`: there is no
+  web-search tool at all, and `send_digest` writes to a local file (see above).
 - **Build-environment limitations** (shared IPs, server-side tools bypassing the
   network fence, no host firewall on the builder, DNS as an uninspected
   exfiltration channel, and more) are tracked in
