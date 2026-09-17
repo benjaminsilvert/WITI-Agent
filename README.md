@@ -1,15 +1,30 @@
 # WITI — Walk-It-Talk-It
 
-WITI is a deliberately vulnerable AI agent: a small Claude-powered assistant (web
-fetch, notes search, persistent memory, a progress tracker, an inbox reader, and a
-digest sender) built with eight intentional vulnerabilities (A–H). `send_digest`
-writes to a local `outbox.txt` file — no real email is ever sent, in either the
-vulnerable or the hardened version. Some weaknesses were proven structurally, by
-calling the vulnerable functions directly; the A+B exfiltration chain and F's
-prompt-extraction attempts were also tried live against the real model, which
-refused every attempt. All eight were then hardened. Every claim below — weakness,
-fix, and proof — is backed by a script or transcript in `attacks/`, not narrative
-alone.
+**An AI security engineering project: an LLM agent built vulnerable on purpose,
+attacked, and hardened with code-level controls, developed inside a purpose-built,
+network-fenced build environment.**
+
+WITI is a Claude-powered agent with seven tools: web fetch, notes search, persistent
+memory, a progress tracker, an inbox reader, and a digest sender. It was built with
+eight deliberate vulnerabilities (A–H) mapped to the OWASP Top 10 for LLM
+Applications, including indirect prompt injection, data exfiltration, excessive
+agency, stored injection, missing data-layer authorization, and system-prompt
+leakage. Each was demonstrated against the unmodified code, then closed with
+controls enforced in code rather than in the prompt: host/path and recipient
+allow-lists, `<untrusted>` data boundaries with marker-breakout neutralization, a
+deterministic human-approval gate, GATHER/ACT capability separation, and
+sensitivity-based retrieval filtering. A ninth issue, policy denials leaking the
+allow-list back to the model (CWE-209), was discovered during live testing and
+fixed. The fixes are backed by 69 deterministic checks and by live attack runs
+against the real model.
+
+The build environment got the same treatment. The coding agent used to build WITI
+(Claude Code) was treated as a potential adversary and contained in layers:
+permission deny-rules, a restricted Windows identity with ACL-locked control files,
+and a two-VM Hyper-V sandbox whose nftables gateway default-denies all outbound
+traffic except Anthropic's published range (plus DNS). Each layer was verified
+against a live Claude Code process at the enforcement layer, not by taking the
+model's word for it.
 
 ## Before / after, by vulnerability
 
@@ -26,6 +41,10 @@ alone.
 | H | `read_inbox` returned raw message bodies with no untrusted-content boundary. | Output wrapped in `<untrusted>` markers; senders not on an allow-list are flagged, not silently trusted (still included, not dropped). | `verify_v2_cdegh.py`, `verify_marker_breakout.py` | [`attacks/MANUAL_VULN_H.md`](attacks/MANUAL_VULN_H.md) |
 
 ## Setup
+
+By design, `send_digest` writes to a local `outbox.txt` rather than a live
+mailbox, so the exfiltration path can be attacked safely without sending real
+mail.
 
 Requires Python 3.10+ (the codebase uses `X | None` type hints); developed
 against 3.14.
