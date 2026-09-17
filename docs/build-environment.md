@@ -53,8 +53,19 @@ denied at the permission layer, before execution, for both a Bash and a PowerShe
 egress path.
 
 ![Bash curl to example.com denied at the permission layer, before execution](../build-env/screenshots/build_env_curl_bash_blocked.png)
+
+*The Bash path: `curl` to `example.com`, denied at the permission layer before
+execution.*
+
 ![PowerShell Invoke-WebRequest to example.com reaching execution, not blocked, before the PowerShell deny rule existed](../build-env/screenshots/build_env_invokewebrequest_powershell_allowed.png)
+
+*Before the rule: PowerShell `Invoke-WebRequest` to `example.com` reaching
+execution — not blocked.*
+
 ![PowerShell Invoke-WebRequest to example.com denied at the permission layer after the new deny rule was added](../build-env/screenshots/build_env_invokewebrequest_powershell_blocked.png)
+
+*After the rule: the same PowerShell `Invoke-WebRequest` call denied at the
+permission layer.*
 
 ## Layer 2 — OS / process identity
 **Enforces:** the build identity (`witi-agent`, a non-administrator Windows
@@ -107,9 +118,24 @@ call, but the search itself (fetching results from the wider web) runs on
 Anthropic's own infrastructure and never touches the gateway.
 
 ![Live Claude Code fence test on the builder: Bash curl to example.com blocked, to api.anthropic.com allowed](../build-env/screenshots/buildenv_claude_code_fence_test.png)
+
+*Live Claude Code on the builder: Bash `curl` to `example.com` blocked, to
+`api.anthropic.com` allowed — both outcomes from the same fence, one test.*
+
 ![Live Claude Code WebFetch to example.com blocked behind the fence](../build-env/screenshots/buildenv_claude_code_webfetch_blocked.png)
+
+*Behind the fence: live Claude Code WebFetch to `example.com` failed with a
+vague client-side error — consistent with the fence applying to WebFetch,
+though not direct proof of where the request originated.*
+
 ![Live Claude Code WebFetch to www.anthropic.com/news allowed behind the fence](../build-env/screenshots/buildenv_claude_code_webfetch_allowed.png)
+
+*Allowed: the same WebFetch behind the fence, to `www.anthropic.com/news`.*
+
 ![Live Claude Code WebSearch succeeding behind the fence (server-side tool)](../build-env/screenshots/buildenv_claude_code_websearch.png)
+
+*Live Claude Code WebSearch succeeding behind the fence — a server-side tool,
+so the search itself never touches the gateway.*
 
 ## Limitations
 - **Shared IP.** As resolved on 2026-09-16: `api.anthropic.com`, `claude.ai`,
