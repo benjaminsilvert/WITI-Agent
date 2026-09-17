@@ -42,12 +42,13 @@ has no boundary between fetched data and instructions and no domain allow-list �
 hidden text does reach the model's context intact (confirmed in every run's transcript)
 — but across 3 escalating payload variants the model itself declined to act on the
 injected instruction each time, so the egress half of the chain (B) never actually fired.
-**The fix (not yet applied — v2):** per `AGENT_SYSTEM_PROMPT.md` section A+B — wrap
-fetched content in `<untrusted>` markers and instruct the model never to follow
-directions found there, enforce a domain allow-list in code, fix the digest recipient in
-config, and add an egress filter plus a human approval gate before send — none of which
-exist today, so this remains a live, unpatched vulnerability regardless of the model's
-current behavior on these 3 attempts.
+**The fix (applied — v2):** per `AGENT_SYSTEM_PROMPT.md` section A+B — fetched content is
+now wrapped in `<untrusted>` markers with an instruction never to follow directions found
+there, `fetch_url` enforces a host+path allow-list in code, `send_digest`'s recipient is
+pinned via config, and a human-approval gate now sits before any send/write action — see
+`MANUAL_VULN_A.md`/`MANUAL_VULN_B.md`'s "v2: patched" sections for verification. This
+script itself predates those patches and does not exercise them — see the v1-only note
+at the top of this file.
 
 ## Why "3 refused" is still a real finding, not a non-result
 

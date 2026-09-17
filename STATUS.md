@@ -13,6 +13,13 @@ command was executed this session and its output is shown. **[doc only]** = the 
 rests on a document's narrative description of an event this audit did not independently
 re-run or see raw evidence for (used only for the D+G screenshots — see §4)._
 
+> **Historical note (added 2026-09-17):** §1–§5 below are a point-in-time audit from
+> 2026-08-04, describing WITI's fully v1 (vulnerable) state — file listings, per-vuln
+> descriptions, and "not yet patched" language all reflect that date, not today. All of
+> A–H have since been patched to v2; see §18–§22 for the current status and each vuln's
+> `attacks/MANUAL_VULN_*.md` "v2: patched" section for evidence. (The §4 table itself
+> has been kept up to date in place, including its evidence-column pointers to §22.)
+
 ---
 
 ## 1. Directory tree

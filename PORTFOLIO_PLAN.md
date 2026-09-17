@@ -1,8 +1,11 @@
 # WITI Portfolio Plan — breadth-first before/after, three phases
 
-Status: **proposed, not started.** This file is the plan only; no phase below has been
-executed. See STATUS HAND-OFF in the chat turn that produced this file for exact session
-state.
+Status (updated 2026-09-17): **Phases 1–2 complete** — every vuln in the table below has
+a before-proof (Phase 1) and is patched to v2 (Phase 2); see `STATUS.md` §18–§22 for the
+session-by-session record and each `attacks/MANUAL_VULN_*.md`'s "v2: patched" section for
+per-vuln evidence. **Phase 3 (portfolio finalize/reorg) not started.** The plan text below
+is left as originally written and should be read as the original plan, not a current
+TODO list — where it says a phase "has not been executed," that's true only for Phase 3.
 
 ## Why this plan
 

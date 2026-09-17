@@ -29,6 +29,12 @@ where `TOOL_POLICY` is normally assigned at startup.
 
 ### `tool_policy.json` (new file, project root)
 
+> **Historical (2026-09-17):** shown below as it existed when this control was
+> first added. The current `tool_policy.json` differs — `fetch_url`'s allow-listed
+> host is `www.anthropic.com` (not `www.terra.security`), and a per-host
+> `url_path_prefix` map was added in a later session. See `tool_policy.json` in the
+> repo root for the live version.
+
 ```json
 {
   "default": "deny",
@@ -303,6 +309,10 @@ actually wired into the dispatch path the agent loop uses. It does **not** prove
   {}).get("allow")]` and passes that to `client.messages.create()`, but every test above calls
   `check_policy()` / `run_tool()` directly — none of them exercise `main()`, so this filtering
   has been read-reviewed, not executed and observed.
+- **Historical (2026-09-17): this bullet is stale.** As of this date, all of A–H are
+  patched to v2 — see `STATUS.md` §18–§22 and each vuln's `attacks/MANUAL_VULN_*.md`
+  "v2: patched" section. The claim below describes the state at the time this
+  control was first added, not the current state.
 - **No v2 work has been done on A, C, D, E, F, or G.** Specifically: `fetch_url` still drops
   page content straight into context with no `<untrusted>` wrapping (A); `append_memory` /
   `update_tracker` are still unrestricted writes with no sanitization or append-only enforcement
