@@ -5,3 +5,4 @@
 [PASS] update_tracker description says 'append': present=True
 [PASS] append_memory/update_tracker/send_digest mention human denial: {'append_memory': True, 'update_tracker': True, 'send_digest': True}
 [PASS] fetch_url/read_inbox descriptions contain '<untrusted>': {'fetch_url': True, 'read_inbox': True}
+7/7 PASS

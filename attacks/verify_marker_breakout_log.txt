@@ -8,3 +8,4 @@
 [PASS] read_inbox body with fake opening <untrusted> -> neutralized, one real opening marker: exactly_one_open=True starts_with_real_open=True fake_open_gone=True
 [PASS] read_inbox unknown sender -> still flagged [SENDER NOT IN ALLOW-LIST]: flag_present=True
 [PASS] read_inbox allow-listed sender, no markers -> passes through unchanged, no [removed marker]: verbatim=True no_flag=True no_marker_removed=True
+10/10 PASS

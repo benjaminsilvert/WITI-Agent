@@ -116,6 +116,12 @@ def main_():
     ok = all(untrusted_mentioned.values())
     run_case(lines, "fetch_url/read_inbox descriptions contain '<untrusted>'", ok, f"{untrusted_mentioned}")
 
+    passed = sum(1 for line in lines if line.startswith("[PASS]"))
+    total = len(lines)
+    summary = f"{passed}/{total} PASS"
+    print(summary)
+    lines.append(summary)
+
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

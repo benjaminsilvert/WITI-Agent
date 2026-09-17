@@ -203,6 +203,12 @@ def main_():
 
     run_case(lines, "owner email never appears unredacted in logged lines", check_case8)
 
+    passed = sum(1 for line in lines if line.startswith("[PASS]"))
+    total = len(lines)
+    summary = f"{passed}/{total} PASS"
+    print(summary)
+    lines.append(summary)
+
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

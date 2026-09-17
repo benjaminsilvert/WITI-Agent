@@ -7,3 +7,4 @@
 [PASS] TOOL_POLICY=None -> run_tool denies cleanly, no exception: no_crash=True result='Denied by policy: this action is not permitted.'
 [PASS] detailed reason prints to terminal even though model-facing result is generic: model_result_generic=True terminal_has_detail=True
 [PASS] owner email never appears unredacted in logged lines: owner_email_absent_from_all_logged_lines=True
+9/9 PASS

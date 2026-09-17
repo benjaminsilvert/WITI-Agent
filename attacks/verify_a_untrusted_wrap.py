@@ -101,6 +101,12 @@ def main_():
 
     run_case(lines, "stubbed fetch exception -> Error fetching, unwrapped", check_case3)
 
+    passed = sum(1 for line in lines if line.startswith("[PASS]"))
+    total = len(lines)
+    summary = f"{passed}/{total} PASS"
+    print(summary)
+    lines.append(summary)
+
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

@@ -1,3 +1,4 @@
 [PASS] allowed host + stubbed success -> wrapped with source + intact closing marker: starts_with_open=True ends_with_close=True has_source_line=True exactly_one_close_marker=True len=5058
 [PASS] disallowed host -> Denied by policy, unwrapped: result='Denied by policy: this action is not permitted.'
 [PASS] stubbed fetch exception -> Error fetching, unwrapped: result='Error fetching https://claude.com/blog: stubbed network failure'
+3/3 PASS

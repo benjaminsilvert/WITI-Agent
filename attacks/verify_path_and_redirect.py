@@ -125,6 +125,12 @@ def main_():
         expect_allowed=False,
     )
 
+    passed = sum(1 for line in lines if line.startswith("[PASS]"))
+    total = len(lines)
+    summary = f"{passed}/{total} PASS"
+    print(summary)
+    lines.append(summary)
+
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

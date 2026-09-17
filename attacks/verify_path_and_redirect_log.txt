@@ -9,3 +9,4 @@
 [PASS] redirect to disallowed path on an allowed host: redirect to https://claude.com/admin -> blocked, HTTPError(Redirect blocked by policy: path '/admin' not in url_path_prefix allow-list for host 'claude.com' (['/blog'])) [expected DENIED]
 [PASS] redirect to an allowed target: redirect to https://claude.com/blog/other -> allowed, got Request [expected ALLOWED]
 [PASS] redirect to double-percent-encoded .. segment: redirect to https://claude.com/blog/%252e%252e/secret -> blocked, HTTPError(Redirect blocked by policy: path '/blog/%252e%252e/secret' rejected (contains '..' or invalid encoding) for fetch_url) [expected DENIED]
+11/11 PASS

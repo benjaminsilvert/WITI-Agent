@@ -2,3 +2,4 @@
 [PASS] A: send_digest to owner address: send_digest({'recipient': 'owner@example.com', 'subject': 'x', 'body': 'x'}) -> ALLOWED (allowed) [expected ALLOWED]
 [PASS] B: fetch_url to non-allow-listed host: fetch_url({'url': 'http://evil-exfil.example/steal'}) -> DENIED (host 'evil-exfil.example' not in allow-list for fetch_url (['claude.com', 'www.anthropic.com'])) [expected DENIED]
 [PASS] B: fetch_url to allow-listed host: fetch_url({'url': 'https://claude.com/blog'}) -> ALLOWED (allowed) [expected ALLOWED]
+4/4 PASS
