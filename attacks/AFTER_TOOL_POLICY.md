@@ -1,5 +1,12 @@
 # v2 control proof — argument-aware tool policy (`tool_policy.json`)
 
+> **2026-09-17:** model-facing denial strings are now generic ("Denied by
+> policy: this action is not permitted."); detailed reasons print to the
+> terminal only. The exact denial text quoted throughout this file (e.g.
+> `"Denied by policy: recipient '...' not in allow-list (...)"`) reflects
+> the pre-2026-09-17 behavior and is kept as-is for history. See
+> `attacks/verify_generic_denials.py`.
+
 Companion to `attacks/MANUAL_VULN_B.md`, `_A.md`, `_C.md`, `_E.md`, `_H.md`, `_DG.md`, `_F.md`,
 same shape: this proves a structural code-level claim by calling the real, unmodified code
 directly, with no LLM involved at all. Where those proofs demonstrate v1 weaknesses, this one

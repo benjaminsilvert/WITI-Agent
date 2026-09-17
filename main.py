@@ -189,6 +189,16 @@ def _fetch_url_policy_check(url: str) -> tuple[bool, str]:
     return True, "allowed"
 
 
+class _RedirectPolicyDenied(urllib.error.HTTPError):
+    """Raised by _PolicyRedirectHandler when a redirect target fails the policy check.
+
+    A distinct type -- not a bare HTTPError matched by message text -- so
+    fetch_url()'s except block can reliably tell "redirect blocked by policy"
+    apart from a genuine transport/HTTP error and keep the detailed reason
+    out of the model-facing return (see fetch_url() below).
+    """
+
+
 class _PolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Re-applies fetch_url's host+path allow-list to every redirect target.
 
@@ -204,9 +214,9 @@ class _PolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
         allowed, reason = _fetch_url_policy_check(newurl)
         if not allowed:
             # Raising here aborts the redirect; the exception propagates out
-            # of urlopen(), where fetch_url()'s `except Exception` below
-            # catches it, so the caller just sees an "Error fetching" message.
-            raise urllib.error.HTTPError(newurl, code, f"Redirect blocked by policy: {reason}", headers, fp)
+            # of urlopen(), where fetch_url()'s `except _RedirectPolicyDenied`
+            # below catches it, so the caller just sees a generic denial.
+            raise _RedirectPolicyDenied(newurl, code, f"Redirect blocked by policy: {reason}", headers, fp)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -284,12 +294,16 @@ def fetch_url(url: str) -> str:
     # allow-list.
     allowed, reason = _fetch_url_policy_check(url)
     if not allowed:
-        return f"Denied by policy: {reason}"
+        print(f"[POLICY DENY] fetch_url({url!r}) -> {reason}")
+        return "Denied by policy: this action is not permitted."
 
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "witi-agent/0.1"})
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             html = response.read().decode("utf-8", errors="replace")
+    except _RedirectPolicyDenied as exc:
+        print(f"[POLICY DENY] fetch_url({url!r}) redirect -> {exc.msg}")
+        return "Denied by policy: this action is not permitted."
     except Exception as exc:
         return f"Error fetching {url}: {exc}"
 
@@ -404,10 +418,12 @@ def send_digest(recipient: str, subject: str, body: str) -> str:
     # Defense-in-depth: same reasoning as fetch_url's guard above.
     allowed = (TOOL_POLICY or {}).get("tools", {}).get("send_digest", {}).get("args", {}).get("recipient")
     if not allowed:
-        return "Denied by policy: no recipient allow-list configured for send_digest."
+        print(f"[POLICY DENY] send_digest(recipient={recipient!r}) -> no recipient allow-list configured for send_digest")
+        return "Denied by policy: this action is not permitted."
     allowed_values = allowed if isinstance(allowed, list) else [allowed]
     if recipient not in allowed_values:
-        return f"Denied by policy: recipient '{recipient}' not in allow-list for send_digest ({allowed_values})."
+        print(f"[POLICY DENY] send_digest(recipient={recipient!r}) -> recipient '{recipient}' not in allow-list for send_digest ({allowed_values})")
+        return "Denied by policy: this action is not permitted."
 
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with open(OUTBOX_PATH, "a", encoding="utf-8") as f:
@@ -501,6 +517,9 @@ def load_policy(path: str = "tool_policy.json") -> dict:
 
 def check_policy(name: str, tool_input: dict) -> tuple[bool, str]:
     """Check a proposed tool call against TOOL_POLICY. Returns (allowed, reason)."""
+    if TOOL_POLICY is None:
+        return False, "no policy loaded"
+
     rule = TOOL_POLICY.get("tools", {}).get(name)
     if not rule or not rule.get("allow"):
         return False, f"tool '{name}' is not permitted (default: {TOOL_POLICY.get('default', 'deny')})"
@@ -551,7 +570,7 @@ def run_tool(name: str, tool_input: dict) -> str:
     allowed, reason = check_policy(name, tool_input)
     if not allowed:
         print(f"[POLICY DENY] {name}({tool_input}) -> {reason}")
-        return f"Denied by policy: {reason}"
+        return "Denied by policy: this action is not permitted."
 
     if name in CONSEQUENTIAL_TOOLS and not request_approval(name, tool_input):
         return f"Denied by human: {name} was not approved."

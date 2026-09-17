@@ -1,0 +1,9 @@
+[PASS] run_tool send_digest disallowed recipient -> generic, no leak: result='Denied by policy: this action is not permitted.' generic=True owner_email_absent=True
+[PASS] run_tool fetch_url disallowed host -> generic, no leak: result='Denied by policy: this action is not permitted.' generic=True allowlist_hosts_absent=True
+[PASS] run_tool fetch_url allowed host + disallowed path -> generic, no leak: result='Denied by policy: this action is not permitted.' generic=True allowlist_paths_absent=True
+[PASS] direct fetch_url/send_digest (bypassing run_tool) -> generic, no leak, no outbox write: fetch_url_result='Denied by policy: this action is not permitted.' send_digest_result='Denied by policy: this action is not permitted.' generic_a=True generic_b=True no_leak=True outbox_untouched=True
+[PASS] redirect_request() raises _RedirectPolicyDenied carrying real allow-list detail: raised=True detailed_reason="Redirect blocked by policy: host 'evil-exfil.example' not in allow-list for fetch_url (['claude.com', 'www.anthropic.com'])" has_allowlist_host=True
+[PASS] fetch_url denied redirect -> generic, no leak (despite real detail existing): result='Denied by policy: this action is not permitted.' generic=True allowlist_hosts_absent=True
+[PASS] TOOL_POLICY=None -> run_tool denies cleanly, no exception: no_crash=True result='Denied by policy: this action is not permitted.'
+[PASS] detailed reason prints to terminal even though model-facing result is generic: model_result_generic=True terminal_has_detail=True
+[PASS] owner email never appears unredacted in logged lines: owner_email_absent_from_all_logged_lines=True
