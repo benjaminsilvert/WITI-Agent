@@ -15,16 +15,16 @@ allow-lists, `<untrusted>` data boundaries with marker-breakout neutralization, 
 deterministic human-approval gate, GATHER/ACT capability separation, and
 sensitivity-based retrieval filtering. A ninth issue, policy denials leaking the
 allow-list back to the model (CWE-209), was discovered during live testing and
-fixed. The fixes are backed by 69 deterministic checks and by live attack runs
-against the real model.
+fixed. The fixes are backed by 69 deterministic checks and exercised in live
+attack runs against the real model.
 
 The build environment got the same treatment. The coding agent used to build WITI
 (Claude Code) was treated as a potential adversary and contained in layers:
 permission deny-rules, a restricted Windows identity with ACL-locked control files,
 and a two-VM Hyper-V sandbox whose nftables gateway default-denies all outbound
-traffic except Anthropic's published range (plus DNS). Each layer was verified
-against a live Claude Code process at the enforcement layer, not by taking the
-model's word for it.
+traffic except Anthropic's published range (plus DNS). Each layer was verified at
+the enforcement layer, including against a live Claude Code process, not by
+taking the model's word for it.
 
 ## Before / after, by vulnerability
 
