@@ -274,6 +274,73 @@ Claude Code process, not just a `runas` probe: the block is keyed to *who the pr
 instance might use to attempt the write or read — allow-list, permission-write path, or anything
 else not yet enumerated. That is the property Layer 1's per-tool rules could never deliver.
 
+### Finding 10: a deny-write lock doesn't stop deletion or replacement
+
+The 2026-08-20 lock (Half 2, above) denied only Write (`W`) on `tool_policy.json`,
+`prompts/system.md`, and `.claude/settings.local.json`. Windows grants the ability to
+delete a file through either an explicit Delete permission on the file itself **or** a
+Delete Child permission on its *parent folder* — and the project folder's ACL grants
+`Authenticated Users:(M)` (Modify), which includes Delete Child. A `W`-only deny
+therefore left a second path open: not editing the locked file, but deleting it (or
+its containing folder) and writing a fresh one in its place.
+
+A throwaway test on 2026-09-17 confirmed this rather than assuming it: run as
+`witi-agent`, `Remove-Item tool_policy.json` succeeded, and so did renaming its
+parent folder — a locked control file could be replaced wholesale rather than
+edited, defeating the point of the lock.
+
+**Fix (2026-09-17):** `icacls` deny rules extended from write-only to write-and-delete,
+plus new folder-level deletion rules:
+- `W,D` denied (for `witi-agent`) on `tool_policy.json`, `prompts\system.md`,
+  `.claude\settings.local.json`, and `main.py`.
+- `R,W,D` denied on `.env` (same scope as before, delete added).
+- `D,DC` (Delete, Delete Child) denied on the `prompts` folder, the `.claude` folder,
+  and the project folder itself. These folder-level rules are **not inherited** down
+  to individual files, so `memory.json`, `tracker.md`, and `outbox.txt` — WITI's
+  normal read/write state — stay writable by `witi-agent`, unaffected.
+- `main.py` is now locked too — the item this document deferred at the end of the
+  original Layer 2 write-up ("revisit whether `main.py` should also be locked once
+  the A–H patch work is complete," carried forward as an open item in `STATUS.md`
+  §13) is now done, since A–H patching finished in §18–§20.
+
+**Verified as `witi-agent`, at the enforcement layer:**
+- `Remove-Item tool_policy.json` → `PermissionDenied` (`UnauthorizedAccessException`);
+  the file is still present afterward.
+- `Rename-Item prompts` → access denied; the folder is still present afterward.
+- `Add-Content tracker.md` (an unlocked file) → succeeded, confirming the folder-level
+  `D,DC` deny doesn't collaterally block normal WITI state writes. The written line
+  was reverted with `git` afterward rather than left in the tracker.
+- **Not live-tested:** renaming the project folder itself. Any process holding an open
+  file handle inside it (a running Python interpreter, an open editor) would block
+  that rename regardless of the ACL, so a live attempt wouldn't isolate what the
+  permission rule alone is responsible for. The rule is instead confirmed by `icacls`
+  output and by the throwaway test above, which exercised the same `D`/`DC` mechanism
+  on a file and a subfolder.
+
+**Lesson:** test the attacker's actual goal, not one operation assumed to represent
+it. The original Half 2 verification tested "can `witi-agent` write the file" and
+concluded the file was protected; it never tested "can `witi-agent` make the file
+disappear and put a different one in its place," which achieves the same outcome (a
+policy the attacker controls) through a different Windows permission. A blocked
+operation's error message alone isn't evidence the *goal* was blocked, either — check
+the end state, not just the error text: `cmd` printed `Could Not Find` (not an
+access-denied message) for a delete attempt against an already-deleted path in the
+throwaway test, which would read as "nothing happened" unless the file's actual
+presence was checked directly.
+
+**Remaining limits, not closed by this fix:**
+- `witi-agent` can still modify packages installed in `.venv` and can still edit
+  `notes/*.md` front-matter (e.g. flip a note's `sensitivity: private` label) —
+  neither is locked by this or the original Layer 2 pass.
+- `load_policy()` resolves `tool_policy.json` relative to the current working
+  directory, not an absolute path — running WITI from a different directory
+  containing a different `tool_policy.json` would load that file instead, unlocked,
+  without ever touching the real one.
+- This lock protects the separate `witi-agent` Windows account and its own Claude
+  Code install; the Cursor-based Claude Code session used for day-to-day development
+  on this project runs as `silve`, the same account that owns these files — Layer 2
+  constrains the build/attack-testing identity, not everyday development.
+
 ## Layer 3 — Sandbox / VM
 
 Implemented and proven end-to-end: two-VM sandbox built, network wired, builder isolation proven (2026-08-26 §16, 2026-08-28 §17); egress locked down and proven, and a live Claude Code install verified running behind it (2026-09-16 §21 — see Layer 4).

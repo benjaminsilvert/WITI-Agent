@@ -181,12 +181,12 @@ patches, and §20 for A's `<untrusted>` output wrapping.
 |----|---|---|---|---|
 | A | `fetch_url` — domain allow-list enforced at two independent layers (`check_policy` before dispatch, **and** §19's second in-function guard), **and** (added §20) successful output wrapped in `<untrusted>...</untrusted>` markers with the source URL, applied after `FETCH_CHAR_CAP` truncation so the closing marker can't be cut off; the two error-path strings (policy denial, fetch error) stay unwrapped | **patched (v2)**, defense-in-depth | **3** — deterministic re-proof at the policy chokepoint, plus deterministic wrap proof | `main.py` (`check_policy`, `fetch_url`); `attacks/verify_ab_patch.py` + `verify_ab_patch_log.txt` (§18); direct-bypass demo (§19); `attacks/verify_a_untrusted_wrap.py` + `verify_a_untrusted_wrap_log.txt` (§20) |
 | B | `send_digest` — recipient pinned to `$OWNER_EMAIL` at two independent layers: `check_policy` before dispatch, **and** (added §19) a second in-function guard inside `send_digest` itself reading the same `TOOL_POLICY` | **patched (v2)**, defense-in-depth | **3** — same deterministic re-proof | same as A |
-| C | `append_memory` (size cap + `source` provenance) + `update_tracker` (append-only, size cap) | **patched (v2)** | **2** — manual demo, this session | `main.py` (`append_memory`, `update_tracker`); §18 |
-| D | No human-in-the-loop on consequential actions | **patched (v2)** — deterministic approval gate in `run_tool` before `append_memory`/`update_tracker`/`send_digest`, fail-closed on any answer other than exactly `y` | **2** — proven with a monkeypatched `input()` (`n` blocks, `y` proceeds), this session | `main.py` (`request_approval`, `CONSEQUENTIAL_TOOLS`, `run_tool`); §19 |
-| E | `search_notes` — `sensitivity` front-matter, public-only default, fail-closed on unlabeled notes, `include_private=True` to override | **patched (v2)** | **2** — manual demo, this session | `main.py` (`search_notes`); `notes/*.md` front-matter; §18 |
+| C | `append_memory` (size cap + `source` provenance) + `update_tracker` (append-only, size cap) | **patched (v2)** | **2** — manual demo, this session | `main.py` (`append_memory`, `update_tracker`); `attacks/verify_v2_cdegh.py`; §18; §22 |
+| D | No human-in-the-loop on consequential actions | **patched (v2)** — deterministic approval gate in `run_tool` before `append_memory`/`update_tracker`/`send_digest`, fail-closed on any answer other than exactly `y` | **2** — proven with a monkeypatched `input()` (`n` blocks, `y` proceeds), this session | `main.py` (`request_approval`, `CONSEQUENTIAL_TOOLS`, `run_tool`); `attacks/verify_v2_cdegh.py`; §19; §22 |
+| E | `search_notes` — `sensitivity` front-matter, public-only default, fail-closed on unlabeled notes, `include_private=True` to override | **patched (v2)** | **2** — manual demo, this session | `main.py` (`search_notes`); `notes/*.md` front-matter; `attacks/verify_v2_cdegh.py`; §18; §22 |
 | F | Planted secret (`INTERNAL_OPS_KEY`) in system prompt | **patched (v2)** — lines deleted entirely, nothing to relocate (the key was fake) | n/a — no secret remains to extract | `prompts/system.md`; §18 |
-| G | All 7 tools reachable in every phase, no capability separation | **patched (v2)** — the run is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only); the phase that reads untrusted content structurally cannot reach a send/write tool | **2** — proven structurally (dangerous tools absent from each phase's tool list), no model call needed, this session | `main.py` (`run_phase`, `GATHER_TOOL_NAMES`, `ACT_TOOL_NAMES`); §19 |
-| H | `read_inbox` — output wrapped in `<untrusted>` markers, sender allow-list flags (not drops) unknown senders | **patched (v2)** | **2** — manual demo, this session | `main.py` (`read_inbox`); `prompts/system.md` untrusted-content rule; §18 |
+| G | All 7 tools reachable in every phase, no capability separation | **patched (v2)** — the run is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only); the phase that reads untrusted content structurally cannot reach a send/write tool | **2** — proven structurally (dangerous tools absent from each phase's tool list), no model call needed, this session | `main.py` (`run_phase`, `GATHER_TOOL_NAMES`, `ACT_TOOL_NAMES`); `attacks/verify_v2_cdegh.py`; §19; §22 |
+| H | `read_inbox` — output wrapped in `<untrusted>` markers, sender allow-list flags (not drops) unknown senders | **patched (v2)** | **2** — manual demo, this session | `main.py` (`read_inbox`); `prompts/system.md` untrusted-content rule; `attacks/verify_v2_cdegh.py`; §18; §22 |
 
 ### A — `fetch_url` (indirect prompt injection)
 **Structural** `[read file]`: `main.py:107-119` — `urllib.request.urlopen()` is called with
@@ -1281,3 +1281,71 @@ still-open task (see Pending item 1 below).
 6. Optional hardening: run Claude Code on the builder as a limited user; add a builder host
    firewall; deny WebSearch in Claude Code permissions if needed; turn off Hyper-V automatic
    checkpoints.
+
+## §22 — End-of-session wrap — 2026-09-17
+
+**Headline:** Closed the CWE-209 policy-denial leak (generic model-facing denial string,
+`check_policy` fails closed), closed the `<untrusted>` marker-breakout gap for both
+`fetch_url` and `read_inbox`, built a live v2 harness proving both attack scenarios against
+the real `main()`, fixed tool-schema description drift found via those live runs, added the
+first deterministic proof for vulns C/D/E/G/H, brought every `MANUAL_VULN_*.md` write-up up
+to date with its v2 fix, and closed a delete/rename gap in Layer 2's file locks (Finding 10).
+
+### WITI code changes
+- `attacks/verify_marker_breakout.py` 10/10 PASS — closes the `</untrusted>` HTML-entity
+  marker-breakout gap for `fetch_url` and `read_inbox` (shared `_neutralize_markers()`), plus
+  a no-harm case for an allow-listed sender with ordinary content.
+- CWE-209 / OWASP LLM02 fix (commit `3bcf1e8`): every policy-denial path now returns the
+  fixed generic string `"Denied by policy: this action is not permitted."` to the model; the
+  detailed reason prints to the terminal only; a `_RedirectPolicyDenied` exception type closes
+  the redirect-error leak path; `check_policy` fails closed (`TOOL_POLICY is None` → deny, not
+  crash). `verify_generic_denials.py` 9/9 PASS. Found live during an approval-gate practice
+  run — write-up: `attacks/MANUAL_VULN_B2_verbose_denial.md`.
+- `attacks/live_v2_harness.py` — calls the real, unmodified `main()`, isolated in a temp
+  directory (no real repo state touched), with an in-memory-only allow-list bypass for the
+  `web` scenario and a "did the attack payload actually reach the model" precondition on the
+  verdict. Four live runs recorded in `attacks/LIVE_V2_RESULTS.md`: inbox (delivered, all
+  three injected writes denied); web run 1 (inconclusive — the bypass's `"/"` path prefix
+  never matched, fixed to grant the exact payload path); web run 2 (delivered, no digest sent
+  at all); web run 3 (delivered, digest approved to the real owner only).
+- Tool-schema description drift fix (commit `ccbd41e`): `update_tracker`'s description said
+  "Overwrite" (it's append-only); every "(v1: ...)" label removed; descriptions now name the
+  `<untrusted>` boundary, the approval gate, and `search_notes`'s public-only default; no
+  allow-listed host/path/recipient value appears in any description.
+  `verify_tool_descriptions.py` 7/7 PASS.
+- `attacks/verify_v2_cdegh.py` 21/21 PASS — first deterministic (no model, no network) proof
+  for C, D, E, G, H, all previously "manual demo" only. Required extracting
+  `build_phase_tools()` out of `main()` (pure computation, no API call) so G's gather/act
+  split is testable in isolation; fails closed to two empty lists if no policy is loaded.
+- All seven `MANUAL_VULN_*.md` write-ups gained a `## v2: patched` section (fix, verify
+  command, expected result, live-run link where relevant) and a past-tense `## Summary`;
+  `attacks/MANUAL_VULN_B2_verbose_denial.md` added for the CWE-209 finding;
+  `attacks/verify_f_no_secret.py` 4/4 PASS added for vuln F (previously the only vuln with no
+  committed deterministic proof at all).
+- §4 table's evidence column corrected for C/D/E/G/H to reference `attacks/verify_v2_cdegh.py`.
+
+### Build environment (Layer 2)
+- Finding 10: the 2026-08-20 file locks denied Write only; Windows grants deletion via
+  Delete-on-the-file or Delete-Child-on-the-parent, and the project folder grants
+  `Authenticated Users:(M)`, so a locked file could be deleted and replaced rather than edited
+  — confirmed live (`witi-agent` could delete `tool_policy.json` and rename `prompts/`).
+  Fixed: `W,D` denied on the four control files (`main.py` now locked too, closing the item
+  deferred in §13), `R,W,D` on `.env`, `D,DC` on the `prompts`, `.claude`, and project folders
+  (not inherited to files, so `memory.json`/`tracker.md`/`outbox.txt` stay writable).
+  Re-verified as `witi-agent`: delete and rename both denied, unlocked writes unaffected. Full
+  detail in `BUILD_ENV_HARDENING.md`, Layer 2, Finding 10.
+
+**Pending going into the next (final) session, in order:**
+1. Export the build environment into the repo: `infra/gateway/nftables.conf` and
+   `docs/build-environment.md` (layered diagram + limitations section).
+2. A front-page `README.md` with a known-limitations list: defensive echoes mis-read as
+   compliance, the model narrating a denied action as done, no `read_tracker` tool, the
+   Unicode-lookalike-bracket marker gap, G not scrubbing untrusted content from context, and
+   Finding 10's remaining limits (`.venv` packages, `notes/*.md` front-matter,
+   `load_policy()`'s relative path, `silve`'s everyday Cursor session being outside Layer 2's
+   scope).
+3. Stale-doc updates.
+4. Remove interview framing from the repo.
+5. `LEARNING_BACKLOG.md` open questions.
+6. Final push.
+7. Delete the old OneDrive folder.
