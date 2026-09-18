@@ -19,15 +19,18 @@ can check out either one.
 
 ---
 
-### Reviewing this in five minutes? Do these three things.
+### Reviewing this in five minutes? Do these four things.
 
-1. **Read one write-up end to end:**
+1. **Read the story:**
+   [`docs/walkthrough.md`](docs/walkthrough.md) — one attack chain from injection to fix
+   to the flaw I found in my own fix.
+2. **Read one write-up end to end:**
    [`attacks/MANUAL_VULN_B2_verbose_denial.md`](attacks/MANUAL_VULN_B2_verbose_denial.md)
    — a v2 control that leaked the very allow-list it was protecting, found live, with the
    leak already sitting unnoticed in a committed, *passing* test log.
-2. **Run the proofs:** `python attacks/run_all_verify.py` — eight scripts, no model call,
+3. **Run the proofs:** `python attacks/run_all_verify.py` — eight scripts, no model call,
    no network, no real state touched.
-3. **Diff the project against itself:** `git checkout v1-vulnerable-full` vs
+4. **Diff the project against itself:** `git checkout v1-vulnerable-full` vs
    `git checkout v2-hardened-full`.
 
 ---
@@ -218,6 +221,7 @@ attacks/
   live_v2_harness.py     live runs against the real main() (real API, real gate)
   LIVE_V2_RESULTS.md     the four live runs, including the inconclusive one
   screenshots/           terminal captures for the v1 exploits
+docs/walkthrough.md          the narrative: one attack chain, start to finish
 docs/build-environment.md    build-env diagram, per-layer verification, limitations
 BUILD_ENV_HARDENING.md       the four layers and all ten findings, in full
 VULN_CATALOG.md              the A–H catalogue + unbuilt extensions + OWASP mapping

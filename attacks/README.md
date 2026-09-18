@@ -1,5 +1,10 @@
 # attacks/exfil_demo.py — flagship vuln A+B exploit
 
+> **Looking for the narrative?** This file is exfil_demo.py's own write-up — one exploit
+> script among several. For the full attack chain end to end, see
+> [`docs/walkthrough.md`](../docs/walkthrough.md); the write-ups across `attacks/` (this
+> one included) are the per-vulnerability evidence it links out to.
+
 > **v1-only:** targets the pre-hardening code path via its own hand-rolled loop, not
 > `main()` — bypasses the v2 GATHER/ACT phase split and never calls `load_policy()` /
 > sets `TOOL_POLICY`, so it now crashes on the first tool call against current
