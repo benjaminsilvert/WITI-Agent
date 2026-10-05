@@ -102,6 +102,28 @@ re-staged.*
 Terminal captures for the other v1 exploits are in
 [`attacks/screenshots/`](attacks/screenshots/).
 
+## How this relates to EchoLeak (CVE-2025-32711)
+
+EchoLeak, disclosed by Aim Labs in June 2025, was a zero-click vulnerability in Microsoft 365 Copilot: a single crafted email could get Copilot to leak data from the victim's Microsoft 365 context to the attacker. Aim Labs classified it as an *LLM scope violation*: untrusted external input steering the model into reading privileged data and sending it out.
+
+WITI's flagship chain is a deliberately simplified instance of the same class. It has the same three ingredients:
+
+| Ingredient | EchoLeak | WITI v1 |
+|---|---|---|
+| Untrusted input reaches the model | An attacker's email retrieved into Copilot's context | A hidden instruction on a fetched page (A) or in an inbox message (H), with no untrusted-content boundary |
+| The model can reach private data | Copilot's retrieval over the user's mail, files and chats | `search_notes` returned full private notes on any match (E) |
+| An outbound channel to the attacker | Image URLs on Microsoft domains permitted by Copilot's CSP | `send_digest` with a fully caller-controlled recipient (B) |
+
+What WITI does **not** reproduce:
+
+- EchoLeak was found in a hardened production system and chained bypasses of several of Copilot's defenses. WITI v1 had no defenses to bypass, by design.
+- EchoLeak exfiltrated through rendered output, with no click required. WITI's channel is an explicit send tool.
+- Aim Labs demonstrated EchoLeak working against the live product. My live injection attempts against WITI were refused by the model three times, so the chain is proven structurally: each vulnerable function is shown to have no check, independent of what any model decides.
+
+The v2 controls target each ingredient: untrusted-content markers on fetched pages, inbox and memory; sensitivity filtering on notes; a recipient allow-list; and GATHER/ACT separation, so the phase that reads untrusted content holds no send tool.
+
+References: [Aim Labs' EchoLeak disclosure (now hosted by Cato Networks)](https://www.catonetworks.com/blog/breaking-down-echoleak/) · [MSRC advisory for CVE-2025-32711](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-32711)
+
 ## Findings: where my own controls were wrong
 
 The patches are the deliverable. These are the part I'd actually want to be judged on —
