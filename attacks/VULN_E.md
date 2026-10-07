@@ -1,6 +1,6 @@
 # Manual exploit of vuln E — search_notes: no sensitivity/authorization check
 
-Companion to `attacks/MANUAL_VULN_A.md` and `attacks/MANUAL_VULN_H.md`, same shape,
+Companion to `attacks/VULN_A.md` and `attacks/VULN_H.md`, same shape,
 different source tool: this proves `search_notes` (`main.py:122-138`) returns full note
 contents on a plain substring match, with zero awareness of a note's own sensitivity —
 by calling the function directly, with no LLM involved at all.

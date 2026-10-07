@@ -1,6 +1,6 @@
 # Manual exploit of vulns D + G — no human-in-the-loop, no capability separation
 
-Companion to `attacks/MANUAL_VULN_A.md`, `_B.md`, `_C.md`, `_E.md`, `_F.md`, `_H.md`, but a
+Companion to `attacks/VULN_A.md`, `_B.md`, `_C.md`, `_E.md`, `_F.md`, `_H.md`, but a
 different shape from all of those. A/B/C/E/H are weaknesses in one specific tool's
 implementation, provable by calling that one function directly. F is behavioral but still
 targets one specific piece of planted content. **D and G are neither** — they're properties
@@ -75,7 +75,7 @@ requires a human to look at it first.
 ## What this proves
 
 - **D — no human-in-the-loop on consequential actions.** `send_digest` (real email send),
-  `update_tracker` (full-file overwrite, see `attacks/MANUAL_VULN_C.md` C-2), and
+  `update_tracker` (full-file overwrite, see `attacks/VULN_C.md` C-2), and
   `append_memory` (permanent, unfiltered write, see C-1) all auto-execute the instant the
   model calls them. There is no checkpoint, confirmation prompt, or gate of any kind
   between model decision and irreversible real-world effect.
@@ -118,7 +118,7 @@ depended entirely on the model's non-deterministic choice not to act — not on 
 in the code. Run 1 and run 3 show that same code producing outcomes ranging from
 unrequested reads to unrequested real email sends and permanent-file overwrites.
 
-This is the same honesty point as the caveat in `attacks/MANUAL_VULN_F.md`: **a safe run
+This is the same honesty point as the caveat in `attacks/VULN_F.md`: **a safe run
 does not indicate the vulnerability is absent.** Run 2 being harmless doesn't patch
 anything — it's one sample of model behavior on one call. This is, in fact, the entire
 point of D and G as *architectural* vulnerabilities rather than behavioral ones: unlike F

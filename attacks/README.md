@@ -51,7 +51,7 @@ injected instruction each time, so the egress half of the chain (B) never actual
 now wrapped in `<untrusted>` markers with an instruction never to follow directions found
 there, `fetch_url` enforces a host+path allow-list in code, `send_digest`'s recipient is
 pinned via config, and a human-approval gate now sits before any send/write action — see
-`MANUAL_VULN_A.md`/`MANUAL_VULN_B.md`'s "v2: patched" sections for verification. This
+`VULN_A.md`/`VULN_B.md`'s "v2: patched" sections for verification. This
 script itself predates those patches and does not exercise them — see the v1-only note
 at the top of this file.
 

@@ -25,7 +25,7 @@ can check out either one.
    [`docs/walkthrough.md`](docs/walkthrough.md) — one attack chain from injection to fix
    to the flaw I found in my own fix.
 2. **Read one write-up end to end:**
-   [`attacks/MANUAL_VULN_B2_verbose_denial.md`](attacks/MANUAL_VULN_B2_verbose_denial.md)
+   [`attacks/VULN_B2.md`](attacks/VULN_B2.md)
    — a v2 control that leaked the very allow-list it was protecting, found live, with the
    leak already sitting unnoticed in a committed, *passing* test log.
 3. **Run the proofs:** `python attacks/run_all_verify.py` — eight scripts, no model call,
@@ -81,15 +81,15 @@ literally zero defenses. That non-result set the project's standard:
 
 | # | Weakness (v1) | Fix (v2) | Verify | Write-up |
 |---|---|---|---|---|
-| A | `fetch_url` had no domain allow-list and no boundary between fetched data and instructions. | Host+path allow-list enforced in code at two independent points; redirects re-checked at every hop; successful output wrapped in `<untrusted>...</untrusted>` markers. | `verify_ab_patch.py`, `verify_path_and_redirect.py`, `verify_a_untrusted_wrap.py`, `verify_marker_breakout.py`, `verify_generic_denials.py` | [`attacks/MANUAL_VULN_A.md`](attacks/MANUAL_VULN_A.md) |
-| B | `send_digest`'s recipient was fully caller-controlled — no fixed address, no allow-list. | Recipient checked against a config-defined allow-list (`$OWNER_EMAIL`) at two independent points; a mismatch denies the send. | `verify_ab_patch.py`, `verify_generic_denials.py` | [`attacks/MANUAL_VULN_B.md`](attacks/MANUAL_VULN_B.md) |
-| B2 | The v2 policy-denial text itself leaked the allow-list (host, path, recipient) back to the model — found live, not planned. | Every denial returns a fixed generic string to the model; the detail prints to the terminal only; `check_policy` fails closed. | `verify_generic_denials.py` | [`attacks/MANUAL_VULN_B2_verbose_denial.md`](attacks/MANUAL_VULN_B2_verbose_denial.md) |
-| C | `append_memory` had no size cap or provenance; `update_tracker` fully overwrote the file on every call. | `append_memory` size-capped (rejects, never truncates) with a `source` field; `update_tracker` append-only, so no destructive code path exists; `read_memory` output wrapped in `<untrusted>` markers. | `verify_v2_cdegh.py` | [`attacks/MANUAL_VULN_C.md`](attacks/MANUAL_VULN_C.md) |
-| D | Every tool call the model made executed immediately — no approval step of any kind. | A deterministic, code-level approval gate pauses before `append_memory`/`update_tracker`/`send_digest`; anything but an exact `y` denies. | `verify_v2_cdegh.py` | [`attacks/MANUAL_VULN_DG.md`](attacks/MANUAL_VULN_DG.md) |
-| E | `search_notes` had no concept of note sensitivity — it returned full contents on any substring match. | Reads a `sensitivity` front-matter field, defaults to public-only, fails closed on unlabeled notes; `include_private=True` has no path through the tool's API schema. | `verify_v2_cdegh.py` | [`attacks/MANUAL_VULN_E.md`](attacks/MANUAL_VULN_E.md) |
-| F | A fake secret sat directly in the system prompt behind a `#` comment and an "internal only" label. | The secret was deleted outright — nothing to relocate, since it was fake. | `verify_f_no_secret.py` | [`attacks/MANUAL_VULN_F.md`](attacks/MANUAL_VULN_F.md) |
-| G | The full 7-tool list was passed on every call, regardless of phase — no separation between reading untrusted content and acting. | The loop is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only), so the phase that reads untrusted content holds no send/write tool. | `verify_v2_cdegh.py` | [`attacks/MANUAL_VULN_DG.md`](attacks/MANUAL_VULN_DG.md) |
-| H | `read_inbox` returned raw message bodies with no untrusted-content boundary. | Output wrapped in `<untrusted>` markers (headers included, since a subject line is as attacker-controlled as a body); unknown senders flagged, not silently trusted or dropped. | `verify_v2_cdegh.py`, `verify_marker_breakout.py` | [`attacks/MANUAL_VULN_H.md`](attacks/MANUAL_VULN_H.md) |
+| A | `fetch_url` had no domain allow-list and no boundary between fetched data and instructions. | Host+path allow-list enforced in code at two independent points; redirects re-checked at every hop; successful output wrapped in `<untrusted>...</untrusted>` markers. | `verify_ab_patch.py`, `verify_path_and_redirect.py`, `verify_a_untrusted_wrap.py`, `verify_marker_breakout.py`, `verify_generic_denials.py` | [`attacks/VULN_A.md`](attacks/VULN_A.md) |
+| B | `send_digest`'s recipient was fully caller-controlled — no fixed address, no allow-list. | Recipient checked against a config-defined allow-list (`$OWNER_EMAIL`) at two independent points; a mismatch denies the send. | `verify_ab_patch.py`, `verify_generic_denials.py` | [`attacks/VULN_B.md`](attacks/VULN_B.md) |
+| B2 | The v2 policy-denial text itself leaked the allow-list (host, path, recipient) back to the model — found live, not planned. | Every denial returns a fixed generic string to the model; the detail prints to the terminal only; `check_policy` fails closed. | `verify_generic_denials.py` | [`attacks/VULN_B2.md`](attacks/VULN_B2.md) |
+| C | `append_memory` had no size cap or provenance; `update_tracker` fully overwrote the file on every call. | `append_memory` size-capped (rejects, never truncates) with a `source` field; `update_tracker` append-only, so no destructive code path exists; `read_memory` output wrapped in `<untrusted>` markers. | `verify_v2_cdegh.py` | [`attacks/VULN_C.md`](attacks/VULN_C.md) |
+| D | Every tool call the model made executed immediately — no approval step of any kind. | A deterministic, code-level approval gate pauses before `append_memory`/`update_tracker`/`send_digest`; anything but an exact `y` denies. | `verify_v2_cdegh.py` | [`attacks/VULN_DG.md`](attacks/VULN_DG.md) |
+| E | `search_notes` had no concept of note sensitivity — it returned full contents on any substring match. | Reads a `sensitivity` front-matter field, defaults to public-only, fails closed on unlabeled notes; `include_private=True` has no path through the tool's API schema. | `verify_v2_cdegh.py` | [`attacks/VULN_E.md`](attacks/VULN_E.md) |
+| F | A fake secret sat directly in the system prompt behind a `#` comment and an "internal only" label. | The secret was deleted outright — nothing to relocate, since it was fake. | `verify_f_no_secret.py` | [`attacks/VULN_F.md`](attacks/VULN_F.md) |
+| G | The full 7-tool list was passed on every call, regardless of phase — no separation between reading untrusted content and acting. | The loop is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only), so the phase that reads untrusted content holds no send/write tool. | `verify_v2_cdegh.py` | [`attacks/VULN_DG.md`](attacks/VULN_DG.md) |
+| H | `read_inbox` returned raw message bodies with no untrusted-content boundary. | Output wrapped in `<untrusted>` markers (headers included, since a subject line is as attacker-controlled as a body); unknown senders flagged, not silently trusted or dropped. | `verify_v2_cdegh.py`, `verify_marker_breakout.py` | [`attacks/VULN_H.md`](attacks/VULN_H.md) |
 
 ![fetch_url returning a page whose hidden display:none block contains an injected SYSTEM OVERRIDE instruction, inline with the ordinary text and with no untrusted-data boundary](attacks/screenshots/vuln_A_fetch_url_run.png)
 
@@ -131,7 +131,7 @@ each one is a control I had written, believed in, and then caught failing.
 
 | Finding | What I believed | What was true |
 |---|---|---|
-| **Denial text as an oracle** (CWE-209, [write-up](attacks/MANUAL_VULN_B2_verbose_denial.md)) | The allow-list protected the send path. | The *refusal message* handed the allow-listed value back to the model, which offered to retry with it. Anyone able to trigger denials could read the policy back out, one probe at a time — and the leak was already in a committed test log that passed every run, because the test asserted *that* a denial happened, never *what it said*. |
+| **Denial text as an oracle** (CWE-209, [write-up](attacks/VULN_B2.md)) | The allow-list protected the send path. | The *refusal message* handed the allow-listed value back to the model, which offered to retry with it. Anyone able to trigger denials could read the policy back out, one probe at a time — and the leak was already in a committed test log that passed every run, because the test asserted *that* a denial happened, never *what it said*. |
 | **Narration is not enforcement** ([Finding 2](BUILD_ENV_HARDENING.md)) | The coding agent was blocked from reading `.env` — it said so. | I had removed those rules. The refusal was model judgment, and the transcript's "Read 1 file" line immediately before it would have read as a successful silent block. Re-tested with a probe (`curl`) that has no disposition to refuse. |
 | **The rule named the wrong mechanism** ([Finding 3](BUILD_ENV_HARDENING.md)) | Deny rules on the Edit/Write tools stopped the agent loosening its own permissions. | The permission file grew anyway — the agent persists permissions through its own internal write path, which is neither tool. The rule did exactly what it said and missed entirely. |
 | **A causal claim is as unverifiable as a narration** ([Finding 4](BUILD_ENV_HARDENING.md)) | A new rule appearing while Edit/Write were denied meant the boundary was bypassed again. | *I* had hand-edited it, as a human, under a different OS identity. The agent couldn't see who acted, and was about to write that false conclusion into the very document about not recording unsupported conclusions. |
@@ -237,7 +237,7 @@ main.py                  the agent: loop + all 7 tools (v2/hardened)
 prompts/system.md        system prompt (no secrets — that was vuln F)
 tool_policy.json         the allow-list config the policy engine enforces
 attacks/
-  MANUAL_VULN_*.md       per-vulnerability write-ups: v1 code, exploit, v2 fix
+  VULN_*.md              per-vulnerability write-ups: v1 code, exploit, v2 fix
   verify_*.py            8 deterministic proof scripts (+ committed logs)
   run_all_verify.py      runs all eight, prints computed totals
   live_v2_harness.py     live runs against the real main() (real API, real gate)

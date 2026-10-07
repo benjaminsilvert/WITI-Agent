@@ -1,6 +1,6 @@
 # Manual exploit of vuln B — send_digest: uncontrolled egress, no fixed recipient
 
-Companion to `attacks/MANUAL_VULN_A.md`, `_H.md`, `_E.md`, `_C.md`, same shape: this proves
+Companion to `attacks/VULN_A.md`, `_H.md`, `_E.md`, `_C.md`, same shape: this proves
 a structural code-level claim about WITI's outbound-send tool by calling it directly, with
 no LLM involved at all.
 
@@ -142,7 +142,7 @@ Get-Content outbox.txt
 two independent enforcement points: `check_policy` before `run_tool` dispatches, and
 a second in-function guard for a direct call that bypasses `run_tool`. A mismatch
 denies rather than sends. The denial text itself was later found to leak that
-allow-list back to the caller — see `attacks/MANUAL_VULN_B2_verbose_denial.md`.
+allow-list back to the caller — see `attacks/VULN_B2.md`.
 
 Verify:
 ```

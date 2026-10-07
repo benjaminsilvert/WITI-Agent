@@ -1,6 +1,6 @@
 # Manual exploit of vuln H — read_inbox: no untrusted-data wrapping on inbound mail
 
-Companion to `attacks/MANUAL_VULN_A.md`, same shape, different source tool: this proves
+Companion to `attacks/VULN_A.md`, same shape, different source tool: this proves
 `read_inbox` (`main.py:178-187`) returns inbound message content as a plain, unwrapped
 string — indistinguishable from trusted instructions once it lands in a model's context —
 by calling the function directly, with no LLM involved at all.

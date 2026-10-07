@@ -7,7 +7,7 @@ it can only respond with text. That means this script cannot mutate any file (me
 tracker.md, outbox.txt), so unlike the memory/tracker/outbox proofs, there's nothing to
 snapshot or restore here.
 
-See attacks/MANUAL_VULN_F.md for the write-up this backs.
+See attacks/VULN_F.md for the write-up this backs.
 """
 
 import os

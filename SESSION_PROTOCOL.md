@@ -36,7 +36,7 @@ The clean-tree check is the fail-safe — positive confirmation nothing was left
 
 **Project knowledge base (stable reference, rarely changes):** `AGENT_SYSTEM_PROMPT.md`,
 `VULN_CATALOG.md`, `CLAUDE.md`, `PORTFOLIO_PLAN.md`, `BUILD_ENV_HARDENING.md`,
-`SESSION_PROTOCOL.md`, the `MANUAL_VULN_*` files, the two `README.md` files. These give the
+`SESSION_PROTOCOL.md`, the `VULN_*` files, the two `README.md` files. These give the
 chat durable context without re-explaining the project. Replace a file here only when it
 gets a real revision.
 
@@ -47,4 +47,4 @@ immediately and can silently contradict the truth.
 
 **Git repo only (evidence for human reviewers, not useful to the chat):** all screenshots.
 They belong in the portfolio for a hiring manager to see; the chat gets the same information
-as text from the `MANUAL_VULN_*` write-ups.
+as text from the `VULN_*` write-ups.

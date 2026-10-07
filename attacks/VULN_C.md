@@ -1,6 +1,6 @@
 # Manual exploit of vuln C — append_memory + update_tracker: no integrity or availability controls
 
-Companion to `attacks/MANUAL_VULN_A.md`, `_H.md`, `_E.md`, same shape: this proves two
+Companion to `attacks/VULN_A.md`, `_H.md`, `_E.md`, same shape: this proves two
 structural code-level claims about WITI's persistent-state tools by calling them directly,
 with no LLM involved at all. Same vuln ID, two opposite directions:
 
@@ -232,7 +232,7 @@ Get-Content tracker.md
 with a `source` field. `update_tracker` is now append-only — it opens the tracker
 in append mode and writes a new dated section, never truncating or replacing
 existing history — and is size-capped the same way. Both are also gated by the
-D fix (`attacks/MANUAL_VULN_DG.md`): a human must approve the write before it
+D fix (`attacks/VULN_DG.md`): a human must approve the write before it
 executes. `read_memory` now wraps its output in `<untrusted>...</untrusted>`
 markers (2026-09-17), with `_neutralize_markers()` applied first, matching
 `read_inbox`'s pattern.

