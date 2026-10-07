@@ -83,7 +83,7 @@ user's data to an attacker. It relied on the same three ingredients. The
 difference is that EchoLeak had to get past Copilot's defenses, and WITI v1 had
 none. ([Aim Labs' write-up](https://www.catonetworks.com/blog/breaking-down-echoleak/))
 
-![fetch_url returning a page with a hidden SYSTEM OVERRIDE instruction mixed in with the normal text](attacks/screenshots/vuln_A_fetch_url_run.png)
+![fetch_url returning a page with a hidden SYSTEM OVERRIDE instruction mixed in with the normal text](attacks/screenshots/vuln_A_fetch_url_run_annotated.png)
 
 *VULN A in v1: `fetch_url` called directly, with no model involved. The hidden
 `SYSTEM OVERRIDE` text comes back mixed in with the normal page text.*
@@ -110,7 +110,7 @@ In another test I sent the same request ("Say ok") to the same code three times.
 Only one run did something dangerous: it sent a digest and made two destructive
 writes without being asked.
 
-![The agent responding to "say ok" by firing send_digest, update_tracker and append_memory with no approval prompt](attacks/screenshots/vuln_DG_run3_sayok_autofired_writes.png)
+![The agent responding to "say ok" by firing send_digest, update_tracker and append_memory with no approval prompt](attacks/screenshots/vuln_DG_run3_sayok_autofired_writes_annotated.png)
 
 *VULNs D and G in v1: asked only to "Say ok," the agent sent a digest and made
 two destructive writes with no approval prompt.*
@@ -162,14 +162,21 @@ edit, it could still delete and replace.
 Details: [`BUILD_ENV_HARDENING.md`](BUILD_ENV_HARDENING.md) and
 [`docs/build-environment.md`](docs/build-environment.md).
 
-> [!IMPORTANT]
-> **What I learned**
->
-> 1. **Control the environment, not the tool names.** A rule that names a command loses to the next command that does the same thing. Identity and network controls don't care what the command is called.
-> 2. **A refusal isn't a fix.** The model refused my main attack three times on code with no defenses. The hole was still there.
-> 3. **Check the control, not what the agent says about it.** Claude Code told me its settings blocked it from reading `.env`. I had already removed those rules. It had just decided not to.
-> 4. **A control the agent can reach is a control it can turn off.** That's why the firewall runs on a separate VM instead of inside the machine it contains.
-> 5. **A passing test only proves what it tests.** The VULN B2 leak sat in a committed test log that passed every run, because the test checked that a denial happened, not what it said.
+## What I learned
+
+1. **Control the environment, not the tool names.** A rule that names a command loses
+   to the next command that does the same thing. Identity and network controls don't
+   care what the command is called.
+2. **A refusal isn't a fix.** The model refused my main attack three times on code with
+   no defenses. The hole was still there.
+3. **Check the control, not what the agent says about it.** Claude Code told me its
+   settings blocked it from reading `.env`. I had already removed those rules. It had
+   just decided not to.
+4. **A control the agent can reach is a control it can turn off.** That's why the
+   firewall runs on a separate VM instead of inside the machine it contains.
+5. **A passing test only proves what it tests.** The VULN B2 leak sat in a committed
+   test log that passed every run, because the test checked that a denial happened,
+   not what it said.
 
 ## What isn't fixed
 
