@@ -1,338 +1,241 @@
-# WITI — Walk-It-Talk-It
+# WITI
 
-**An LLM agent built vulnerable on purpose, attacked, and hardened with code-level
-controls — developed inside a purpose-built, network-fenced build environment that
-treats the coding agent itself as an adversary.**
+## TL;DR
 
-WITI is a Claude-powered agent with seven tools: web fetch, notes search, persistent
-memory, a progress tracker, an inbox reader, and a digest sender. It shipped with eight
-deliberate vulnerabilities (A–H) — indirect prompt injection, data exfiltration,
-excessive agency, stored injection, missing data-layer authorization, system-prompt
-leakage. Each was demonstrated against the unmodified code, then closed with controls
-enforced **in code, not in the prompt**: host/path and recipient allow-lists,
-`<untrusted>` data boundaries with marker-breakout neutralization, a deterministic
-human-approval gate, GATHER/ACT capability separation, and sensitivity-based retrieval
-filtering. A ninth issue — policy denials leaking the allow-list back to the model
-(CWE-209) — was found during live testing and fixed. **69 deterministic checks** back
-the fixes, and the whole vulnerable and hardened states are both tagged in git so you
-can check out either one.
+WITI is a learning project I created to gain hands-on experience applying
+security principles to AI agents. I used AI tools to build a small agent,
+attack it, and patch it.
+
+This project wasn't meant to be a product that solves a business need. It was
+a research experiment to explore the attack surface of basic agent features.
+
+The agent itself is a dummy. It has seven tools, and I only built as much of
+each one as I needed to have something to attack. Even with that little
+functionality, there was a lot to break and a lot to fix.
+
+The project has two parts:
+
+- **The agent.** I put eight weaknesses into it on purpose (in its tools, its
+  main loop, and its system prompt), showed that each one was there, and fixed
+  them in code. I also found a ninth problem in one of my own fixes.
+- **The build environment.** Building WITI with Claude Code made me realize
+  that the coding agent could also become an adversary, through prompt
+  injection, a bug, or a compromised update. So I built and tested two ways to
+  contain a coding agent: a separate Windows account with locked files, and a
+  VM sandbox behind a firewall.
+
+The main lesson of the project: security controls for agents need to be
+enforced deterministically, in the harness and the environment around it,
+instead of trusting the model to follow the rules.
+
+I tested the fixes with Python scripts that call the agent's code directly. No
+AI model is involved, so they give the same result every time.
+
+AI wrote nearly all of the code and most of the documentation. I decided what
+to build, ran every attack and test, reviewed the changes, and set up the
+Windows account, the VMs, and the firewall by hand. More detail is in the
+[Who did what](#who-did-what) section below.
 
 ---
 
-### Reviewing this in five minutes? Do these four things.
+*The rest of this page goes into more detail.*
 
-1. **Read the story:**
-   [`docs/walkthrough.md`](docs/walkthrough.md) — one attack chain from injection to fix
-   to the flaw I found in my own fix.
-2. **Read one write-up end to end:**
-   [`attacks/VULN_B2.md`](attacks/VULN_B2.md)
-   — a v2 control that leaked the very allow-list it was protecting, found live, with the
-   leak already sitting unnoticed in a committed, *passing* test log.
-3. **Run the proofs:** `python attacks/run_all_verify.py` — eight scripts, no model call,
-   no network, no real state touched.
-4. **Diff the project against itself:** `git checkout v1-vulnerable-full` vs
-   `git checkout v2-hardened-full`.
+## How the attack surface grew
 
----
+Each tool I added gave an attacker something new.
 
-## At a glance
+IDs: LLM = OWASP Top 10 for LLM Applications; ASI = OWASP Top 10 for Agentic
+Applications.
 
-| | |
-|---|---|
-| Deliberate vulnerabilities built, exploited, and patched | **8** (A–H) |
-| Additional vulnerabilities found in my *own* v2 controls | **1** (B2, CWE-209) |
-| Deterministic proof scripts / assertions | **8 scripts, 69 checks** |
-| Live runs against the real agent, real API, real approval gate | **4** (3 conclusive, 1 inconclusive — recorded as such) |
-| Build-environment hardening layers | **4**, with **10** documented findings |
-| Git tags for direct before/after checkout | `v1-vulnerable-full`, `v2-hardened-full` |
-| Standards mapped | OWASP Top 10 for LLM Applications; OWASP Top 10 for Agentic Applications |
+| Added | What it gave an attacker | Weakness (v1) | Fix (v2) |
+|---|---|---|---|
+| `fetch_url` | A way to get text into the agent from any web page | **[VULN A](attacks/VULN_A.md): Indirect prompt injection** (LLM01, ASI01). No limit on which sites; no boundary between fetched data and instructions | Allow-list of sites and paths, rechecked on redirects; fetched text marked as untrusted |
+| `search_notes` | Private data worth stealing | **[VULN E](attacks/VULN_E.md): Sensitive data disclosure** (LLM02, ASI03). No concept of public or private notes; any match returned the full note | Public/private labels added; search returns public notes only; unlabeled notes treated as private (fail closed) |
+| `read_memory`, `append_memory`, `update_tracker` | Persistence between runs, and a way to destroy data | **[VULN C](attacks/VULN_C.md): Memory poisoning and excessive agency** (LLM04, LLM06, ASI06, ASI02). Memory had no size limit; every tracker update overwrote the whole file | Memory writes size-limited and approval-gated; memory marked untrusted when the agent reads it back; tracker limited to append-only |
+| `send_digest` | A way to send data out | **[VULN B](attacks/VULN_B.md): Data exfiltration** (LLM06, ASI02). The agent could pick any recipient | Recipient checked against an allow-list set from `OWNER_EMAIL` in `.env` |
+| My fix for VULN B | A way to read the allow-list back out | **[VULN B2](attacks/VULN_B2.md): Error message leaks config** (CWE-209, LLM02). Denials told the agent which address was allowed | Denial messages standardized and sanitized |
+| `read_inbox` | A second way in, without the victim visiting anything | **[VULN H](attacks/VULN_H.md): Zero-click indirect prompt injection** (LLM01, ASI01). Message text came back looking like instructions | Marked untrusted; unknown senders flagged |
+| Main loop | No one to stop a hijacked agent | **[VULN D](attacks/VULN_DG.md): No human-in-the-loop** (LLM06). Actions ran with no approval | Approval prompt before any write or send |
+| Main loop | Send and write tools available while reading untrusted text | **[VULN G](attacks/VULN_DG.md): Excessive agency** (LLM06, ASI02). Every tool was available at every step | Reading and acting split into separate phases |
+| System prompt | A secret the model could simply repeat | **[VULN F](attacks/VULN_F.md): System prompt leakage** (LLM07). A fake secret was sitting in it | Deleted |
 
-## Why this project exists
+### The main attack chain
 
-Reading about agent security teaches you the vocabulary. Building an agent, attacking it,
-and discovering that half your controls don't do what you thought teaches you the
-engineering. WITI is the second thing.
+1. An attacker hides an instruction on a web page, where a human visitor wouldn't see it.
+2. I ask WITI to summarize that page. `fetch_url` brings the hidden instruction back
+   looking like any other text (VULN A).
+3. The agent follows it and searches my notes, which returns the private ones too (VULN E).
+4. It sends them to the attacker with `send_digest` (VULN B).
+5. Nothing stops it: there's no approval prompt (VULN D), and the send tool is available
+   while the agent is reading the page (VULN G).
 
-Every capability was built weak on purpose (v1), exploited, then hardened (v2), with the
-before state frozen in git before any patching started — because a before/after claim you
-can't check out is a story, not evidence.
+The same chain works through the inbox (VULN H), without the victim visiting anything.
 
-## The method — and why it's the point
+In v2, every step has its own control: the page must be on the allow-list and comes back
+marked as untrusted, search returns only public notes, sends only go to the owner, every
+send needs my approval, and the phase that reads the page has no send tool.
 
-**A model refusing an attack is a fact about behavior, not a fix.**
+[Full step-by-step walkthrough](docs/walkthrough.md)
 
-The flagship exploit — a hidden instruction on a fetched page telling the agent to email
-private notes to an attacker — was **refused by the model three times**, on code with
-literally zero defenses. That non-result set the project's standard:
+It's a simplified version of EchoLeak (CVE-2025-32711), a 2025 vulnerability in
+Microsoft 365 Copilot where a single crafted email could make Copilot leak the
+user's data to an attacker. It relied on the same three ingredients. The
+difference is that EchoLeak had to get past Copilot's defenses, and WITI v1 had
+none. ([Aim Labs' write-up](https://www.catonetworks.com/blog/breaking-down-echoleak/))
 
-- **Structural evidence over behavioral evidence.** Most proofs here call the vulnerable
-  function directly, with no model in the loop, and show the code itself has no check.
-  That result is true on every run, for every model, regardless of what any model decides.
-- **Verify at the enforcement layer, never from narration.** When the coding agent claimed
-  its permissions had blocked it from reading `.env`, that claim was false — I'd removed
-  those rules. Controls get tested with probes that have no opinion of their own.
-- **Prove the control discriminates.** Every proof shows the gate saying *no* to the
-  attacker **and** *yes* to the legitimate case. A gate that denies everything is an
-  outage, not a boundary.
-- **Say what the control doesn't cover.** See [Known limitations](#known-limitations) —
-  written before anyone asked.
+![fetch_url returning a page with a hidden SYSTEM OVERRIDE instruction mixed in with the normal text](attacks/screenshots/vuln_A_fetch_url_run.png)
 
-## Before / after, by vulnerability
+*VULN A in v1: `fetch_url` called directly, with no model involved. The hidden
+`SYSTEM OVERRIDE` text comes back mixed in with the normal page text.*
 
-| # | Weakness (v1) | Fix (v2) | Verify | Write-up |
-|---|---|---|---|---|
-| A | `fetch_url` had no domain allow-list and no boundary between fetched data and instructions. | Host+path allow-list enforced in code at two independent points; redirects re-checked at every hop; successful output wrapped in `<untrusted>...</untrusted>` markers. | `verify_ab_patch.py`, `verify_path_and_redirect.py`, `verify_a_untrusted_wrap.py`, `verify_marker_breakout.py`, `verify_generic_denials.py` | [`attacks/VULN_A.md`](attacks/VULN_A.md) |
-| B | `send_digest`'s recipient was fully caller-controlled — no fixed address, no allow-list. | Recipient checked against a config-defined allow-list (`$OWNER_EMAIL`) at two independent points; a mismatch denies the send. | `verify_ab_patch.py`, `verify_generic_denials.py` | [`attacks/VULN_B.md`](attacks/VULN_B.md) |
-| B2 | The v2 policy-denial text itself leaked the allow-list (host, path, recipient) back to the model — found live, not planned. | Every denial returns a fixed generic string to the model; the detail prints to the terminal only; `check_policy` fails closed. | `verify_generic_denials.py` | [`attacks/VULN_B2.md`](attacks/VULN_B2.md) |
-| C | `append_memory` had no size cap or provenance; `update_tracker` fully overwrote the file on every call. | `append_memory` size-capped (rejects, never truncates) with a `source` field; `update_tracker` append-only, so no destructive code path exists; `read_memory` output wrapped in `<untrusted>` markers. | `verify_v2_cdegh.py` | [`attacks/VULN_C.md`](attacks/VULN_C.md) |
-| D | Every tool call the model made executed immediately — no approval step of any kind. | A deterministic, code-level approval gate pauses before `append_memory`/`update_tracker`/`send_digest`; anything but an exact `y` denies. | `verify_v2_cdegh.py` | [`attacks/VULN_DG.md`](attacks/VULN_DG.md) |
-| E | `search_notes` had no concept of note sensitivity — it returned full contents on any substring match. | Reads a `sensitivity` front-matter field, defaults to public-only, fails closed on unlabeled notes; `include_private=True` has no path through the tool's API schema. | `verify_v2_cdegh.py` | [`attacks/VULN_E.md`](attacks/VULN_E.md) |
-| F | A fake secret sat directly in the system prompt behind a `#` comment and an "internal only" label. | The secret was deleted outright — nothing to relocate, since it was fake. | `verify_f_no_secret.py` | [`attacks/VULN_F.md`](attacks/VULN_F.md) |
-| G | The full 7-tool list was passed on every call, regardless of phase — no separation between reading untrusted content and acting. | The loop is split into a GATHER phase (read-only tools only) and an ACT phase (send/write tools only), so the phase that reads untrusted content holds no send/write tool. | `verify_v2_cdegh.py` | [`attacks/VULN_DG.md`](attacks/VULN_DG.md) |
-| H | `read_inbox` returned raw message bodies with no untrusted-content boundary. | Output wrapped in `<untrusted>` markers (headers included, since a subject line is as attacker-controlled as a body); unknown senders flagged, not silently trusted or dropped. | `verify_v2_cdegh.py`, `verify_marker_breakout.py` | [`attacks/VULN_H.md`](attacks/VULN_H.md) |
+### The bug in my own fix
 
-![fetch_url returning a page whose hidden display:none block contains an injected SYSTEM OVERRIDE instruction, inline with the ordinary text and with no untrusted-data boundary](attacks/screenshots/vuln_A_fetch_url_run.png)
+During a live test, a send to a blocked address was denied, but the denial message told
+the model which address *was* allowed, and the model offered to retry with it. Anyone who
+can trigger denials could read my access rules back out, one attempt at a time. This is a
+known bug class (CWE-209: error messages that reveal sensitive information). Now every
+denial returns the same generic message to the model, and the details go only to my
+terminal.
 
-*Vuln A in v1: `fetch_url` called directly, no model involved. The `SYSTEM OVERRIDE`
-sentence was invisible on the rendered page and comes back indistinguishable from
-legitimate content. Both v1 captures predate the environment migration, so they
-show the project's original path — evidence is kept as captured rather than
-re-staged.*
+[Full write-up](attacks/VULN_B2.md)
 
-Terminal captures for the other v1 exploits are in
-[`attacks/screenshots/`](attacks/screenshots/).
+## Why I didn't rely on live attacks
 
-## How this relates to EchoLeak (CVE-2025-32711)
+When I ran the main attack against the real model (a hidden instruction on a web
+page telling the agent to send my private notes to an attacker), the model
+refused three times, even though the code had no defenses at all. That doesn't
+make the code safe. Another model or another prompt could behave differently.
 
-EchoLeak, disclosed by Aim Labs in June 2025, was a zero-click vulnerability in Microsoft 365 Copilot: a single crafted email could get Copilot to leak data from the victim's Microsoft 365 context to the attacker. Aim Labs classified it as an *LLM scope violation*: untrusted external input steering the model into reading privileged data and sending it out.
+In another test I sent the same request ("Say ok") to the same code three times.
+Only one run did something dangerous: it sent a digest and made two destructive
+writes without being asked.
 
-WITI's flagship chain is a deliberately simplified instance of the same class. It has the same three ingredients:
+![The agent responding to "say ok" by firing send_digest, update_tracker and append_memory with no approval prompt](attacks/screenshots/vuln_DG_run3_sayok_autofired_writes.png)
 
-| Ingredient | EchoLeak | WITI v1 |
-|---|---|---|
-| Untrusted input reaches the model | An attacker's email retrieved into Copilot's context | A hidden instruction on a fetched page (A) or in an inbox message (H), with no untrusted-content boundary |
-| The model can reach private data | Copilot's retrieval over the user's mail, files and chats | `search_notes` returned full private notes on any match (E) |
-| An outbound channel to the attacker | Image URLs on Microsoft domains permitted by Copilot's CSP | `send_digest` with a fully caller-controlled recipient (B) |
+*VULNs D and G in v1: asked only to "Say ok," the agent sent a digest and made
+two destructive writes with no approval prompt.*
 
-What WITI does **not** reproduce:
+So most of my proofs call the vulnerable function directly and show that the
+code has no check. That result doesn't depend on what the model decides.
 
-- EchoLeak was found in a hardened production system and chained bypasses of several of Copilot's defenses. WITI v1 had no defenses to bypass, by design.
-- EchoLeak exfiltrated through rendered output, with no click required. WITI's channel is an explicit send tool.
-- Aim Labs demonstrated EchoLeak working against the live product. My live injection attempts against WITI were refused by the model three times, so the chain is proven structurally: each vulnerable function is shown to have no check, independent of what any model decides.
+## How I tested it
 
-The v2 controls target each ingredient: untrusted-content markers on fetched pages, inbox and memory; sensitivity filtering on notes; a recipient allow-list; and GATHER/ACT separation, so the phase that reads untrusted content holds no send tool.
+- **Proof scripts:** 8 scripts, 69 checks. Run them all with
+  `python attacks/run_all_verify.py`. They don't call a model or use the
+  network, and they work on temporary copies of the agent's data files.
+- **Live runs:** 4 runs of the real agent against the real API, with me answering
+  the approval prompts. Three gave a clear result. One didn't, because of a bug
+  in my test harness. These are examples, not proof.
+  ([results](attacks/LIVE_V2_RESULTS.md))
+- **Before and after:** `git checkout v1-vulnerable-full` and
+  `git checkout v2-hardened-full`.
 
-References: [Aim Labs' EchoLeak disclosure (now hosted by Cato Networks)](https://www.catonetworks.com/blog/breaking-down-echoleak/) · [MSRC advisory for CVE-2025-32711](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-32711)
+## The build environment
 
-## Findings: where my own controls were wrong
+Claude Code is third-party software that had access to my secrets, read untrusted
+content from the web, and could make network requests. That's the same combination
+as WITI, which makes it a supply-chain risk (LLM03, ASI04). So I treated it as a
+possible adversary and tried to contain it, moving to a stronger control each time
+the last one fell short.
 
-The patches are the deliverable. These are the part I'd actually want to be judged on —
-each one is a control I had written, believed in, and then caught failing.
+1. **Claude Code's own permission file.** I started with the obvious control: deny
+   rules in `.claude/settings.local.json`. A rule blocking `curl` worked, but the same
+   request through PowerShell's `Invoke-WebRequest` wasn't blocked at all. I blocked
+   that too, but PowerShell has other names for the same command and can reach the
+   network without any command name. Blocking commands one name at a time was a
+   losing game, so I moved the control below the agent.
+2. **A separate Windows account** (`witi-agent`) with file permissions that block it
+   from changing its own controls or reading secrets. I tested it against a second
+   copy of Claude Code running under that account. Windows refused it before Claude
+   Code's own permission checks even ran.
+3. **A two-VM sandbox** in Hyper-V. The builder VM has no internet access of its
+   own. All its traffic goes through a gateway VM running a firewall I wrote in
+   nftables, which blocks everything except Anthropic's API. The firewall lives on a
+   separate machine, outside the builder's control.
 
-| Finding | What I believed | What was true |
-|---|---|---|
-| **Denial text as an oracle** (CWE-209, [write-up](attacks/VULN_B2.md)) | The allow-list protected the send path. | The *refusal message* handed the allow-listed value back to the model, which offered to retry with it. Anyone able to trigger denials could read the policy back out, one probe at a time — and the leak was already in a committed test log that passed every run, because the test asserted *that* a denial happened, never *what it said*. |
-| **Narration is not enforcement** ([Finding 2](BUILD_ENV_HARDENING.md)) | The coding agent was blocked from reading `.env` — it said so. | I had removed those rules. The refusal was model judgment, and the transcript's "Read 1 file" line immediately before it would have read as a successful silent block. Re-tested with a probe (`curl`) that has no disposition to refuse. |
-| **The rule named the wrong mechanism** ([Finding 3](BUILD_ENV_HARDENING.md)) | Deny rules on the Edit/Write tools stopped the agent loosening its own permissions. | The permission file grew anyway — the agent persists permissions through its own internal write path, which is neither tool. The rule did exactly what it said and missed entirely. |
-| **A causal claim is as unverifiable as a narration** ([Finding 4](BUILD_ENV_HARDENING.md)) | A new rule appearing while Edit/Write were denied meant the boundary was bypassed again. | *I* had hand-edited it, as a human, under a different OS identity. The agent couldn't see who acted, and was about to write that false conclusion into the very document about not recording unsupported conclusions. |
-| **Write-deny ≠ protected** ([Finding 10](BUILD_ENV_HARDENING.md)) | ACL-locked control files couldn't be tampered with. | Write was denied; **delete was not.** The restricted account could delete the policy file and rename its parent folder, replacing a locked file wholesale. Test the attacker's goal, not the one operation you assume represents it. |
-| **A passing check isn't a proving check** | My exploit verifier reported the exfiltration succeeded. | The model had *mentioned* the attacker's address while explaining it refused to use it, and a substring test called that a hit. Fixed to parse the actual `To:` line. The same defensive-echo trap reappeared later in a different checker. |
-| **Hand-counted numbers rot** | A "21/21 passing" claim in my own docs. | The suite had 19 cases; it only reached 21 later by coincidence, which is why nobody noticed. Every script now computes and prints its own `passed/total` from real results. |
+The account and the sandbox were never combined. The Claude Code that built WITI ran
+under my normal account, outside both of them.
 
-![Terminal showing the agent responding to a bare "say ok" request by auto-firing send_digest, update_tracker and append_memory back to back with no approval prompt](attacks/screenshots/vuln_DG_run3_sayok_autofired_writes.png)
+This part produced ten findings. One example: a file the restricted account couldn't
+edit, it could still delete and replace.
 
-*Vulns D and G in v1: the request was `"Say ok"`. The agent auto-fired a send and two
-destructive writes, unprompted and ungated. Two earlier runs of the identical code did
-nothing dangerous at all — which is the point. Safety that varies run to run isn't a
-control.*
+Details: [`BUILD_ENV_HARDENING.md`](BUILD_ENV_HARDENING.md) and
+[`docs/build-environment.md`](docs/build-environment.md).
 
-## Build environment — the second threat model
+> [!IMPORTANT]
+> **What I learned**
+>
+> 1. **Control the environment, not the tool names.** A rule that names a command loses to the next command that does the same thing. Identity and network controls don't care what the command is called.
+> 2. **A refusal isn't a fix.** The model refused my main attack three times on code with no defenses. The hole was still there.
+> 3. **Check the control, not what the agent says about it.** Claude Code told me its settings blocked it from reading `.env`. I had already removed those rules. It had just decided not to.
+> 4. **A control the agent can reach is a control it can turn off.** That's why the firewall runs on a separate VM instead of inside the machine it contains.
+> 5. **A passing test only proves what it tests.** The VULN B2 leak sat in a committed test log that passed every run, because the test checked that a denial happened, not what it said.
 
-WITI's own vulnerabilities are one threat model, where the attacker is anyone who can get
-text into the running agent. The environment used to *build* WITI is a separate one, where
-the attacker is **the coding agent itself** — via prompt injection, a bug, or an upstream
-compromise. It had read access to secrets, write access to its own permission file, and
-unrestricted network egress.
+## What isn't fixed
 
-Four layers, each built because the previous one failed in an instructive way:
+- Untrusted text is marked, but whether the model ignores instructions inside it
+  still depends on the model. The full fix would have a separate model with no
+  tools read untrusted content (Simon Willison's dual-LLM pattern). I didn't
+  build it.
+- `send_digest` checks who the message goes to, but not what's in it.
+- The approval prompt is a `y/n` in the terminal, with no timeout or log.
+- The untrusted-text markers can be faked with lookalike Unicode characters.
+- The firewall allows Anthropic's whole address range, which includes services
+  other than the API.
+- The gateway VM never got rules for traffic aimed at itself, so its login service
+  (SSH) was reachable from the builder. In principle, a compromised builder could
+  brute-force that login and rewrite the firewall meant to contain it.
+- More build-environment limits are listed in
+  [`docs/build-environment.md`](docs/build-environment.md#limitations).
 
-1. **Permission harness** — deny rules on the coding agent's own tooling. Findings 1–4 came
-   out of trying to verify them, and concluded that a control bound to a *tool name* can't
-   bind to an *actor*.
-2. **OS identity + file locks** — a restricted Windows account with `icacls` deny rules on
-   the control files and secrets. Verified at the enforcement layer against a **live,
-   separately-installed coding agent**, refused by the OS before any tool-permission logic
-   ran.
-3. **Two-VM Hyper-V sandbox** — a builder VM with no internet route of its own, and a
-   dual-homed gateway VM as its only path out. The egress rules live *outside* the machine
-   they contain, so a compromised builder can't edit what constrains it.
-4. **Network fence** — hand-written nftables on the gateway: default-drop forward chain,
-   IPv6 dropped too, and exactly one allow rule (Anthropic's published range, tcp/443).
-   Proven two-sided: the same request times out before the rule and returns a normal HTTP
-   response after, while everything else still times out.
+## Who did what
 
-Details and verification transcripts:
-[`docs/build-environment.md`](docs/build-environment.md) (diagram + summary),
-[`BUILD_ENV_HARDENING.md`](BUILD_ENV_HARDENING.md) (all ten findings),
-[`infra/gateway/nftables.conf`](infra/gateway/nftables.conf) (the exported ruleset).
+I worked with two AI tools. A Claude chat acted as a tutor and reviewer: it
+helped me plan each step and reviewed the results I brought back. Claude Code
+wrote the Python code, the tests, and the write-ups in `attacks/` and `docs/`.
 
-These are two different identities in two different places — `witi-agent` on the host is
-file-locked with no network fence; `builderadmin` on the builder VM is network-fenced with
-no file locks. Not the same protection twice, and the README says so rather than letting a
-diagram imply it.
-
-## Live runs
-
-[`attacks/LIVE_V2_RESULTS.md`](attacks/LIVE_V2_RESULTS.md) records four runs of the real,
-unmodified `main()` against both attack scenarios (inbox injection; web-page injection with
-an in-memory-only allow-list bypass), with a real interactive approval gate. Three were
-conclusive; one was **inconclusive** — a bypass bug meant the payload never reached the
-model — which is recorded as such and produced the harness's best feature: a precondition
-asserting the attack payload was actually delivered before any verdict is trusted.
-
-Each run is a single data point, not proof. A model declining to comply, or an operator
-declining to approve, on one occasion says nothing about the next payload. **The structural
-controls in the table above are the claim; the live runs are context.**
-
-## Verify it yourself
-
-Requires Python 3.10+ (the codebase uses `X | None` type hints); developed against 3.14.
-
-```
-python -m venv .venv
-.venv\Scripts\activate        # Windows; use .venv/bin/activate on macOS/Linux
-pip install -r requirements.txt
-copy .env.example .env        # Windows; cp on macOS/Linux
-```
-
-Fill in `ANTHROPIC_API_KEY` and `OWNER_EMAIL` in `.env` — both are required, and `main.py`
-exits at startup if either is missing (the latter resolved via `tool_policy.json`'s
-`$OWNER_EMAIL` placeholder, so a real address never sits in a committed file).
-
-Run the agent:
-```
-python main.py
-```
-
-Run every proof:
-```
-python attacks/run_all_verify.py
-```
-
-Prints a per-script `passed/total` plus an overall total (currently `69/69 PASS`). That
-count is computed from the scripts' own output on each run — **read it from your own run
-rather than trusting this number**, since it drifts as scripts are added. Every script is
-deterministic: no model call, no network, and no real WITI state file (`memory.json`,
-`tracker.md`, `outbox.txt`, `inbox.json`, `notes/`) is read or written — each is isolated
-to a temp directory where it needs one. Static config (`tool_policy.json`,
-`prompts/system.md`) is read from the real repo, since that's what's under test.
-
-By design, `send_digest` writes to a local `outbox.txt` rather than a live mailbox, so the
-exfiltration path can be attacked safely without sending real mail.
+I decided what to build and which fixes to accept, ran every attack and live
+test, approved or denied each action during live runs, reviewed the changes,
+and edited the policy and secrets files by hand. I set up the Windows account,
+both VMs, and the firewall myself. Some findings came from my own tests. Others
+came from Claude reviewing output I brought back.
 
 ## Repo map
 
 ```
-main.py                  the agent: loop + all 7 tools (v2/hardened)
-prompts/system.md        system prompt (no secrets — that was vuln F)
-tool_policy.json         the allow-list config the policy engine enforces
-attacks/
-  VULN_*.md              per-vulnerability write-ups: v1 code, exploit, v2 fix
-  verify_*.py            8 deterministic proof scripts (+ committed logs)
-  run_all_verify.py      runs all eight, prints computed totals
-  live_v2_harness.py     live runs against the real main() (real API, real gate)
-  LIVE_V2_RESULTS.md     the four live runs, including the inconclusive one
-  screenshots/           terminal captures for the v1 exploits
-docs/walkthrough.md          the narrative: one attack chain, start to finish
-docs/build-environment.md    build-env diagram, per-layer verification, limitations
-BUILD_ENV_HARDENING.md       the four layers and all ten findings, in full
-VULN_CATALOG.md              the A–H catalogue + unbuilt extensions + OWASP mapping
-AGENT_SYSTEM_PROMPT.md       original design doc: weakness → exploit → patch → principle
-STATUS.md                    session-by-session project history
+main.py                      the agent: main loop and all 7 tools (v2)
+prompts/system.md            system prompt
+tool_policy.json             allow-list config the code enforces
+attacks/VULN_*.md            one write-up per weakness: v1 code, exploit, v2 fix
+attacks/verify_*.py          the 8 proof scripts
+attacks/run_all_verify.py    runs all proofs and prints the totals
+attacks/LIVE_V2_RESULTS.md   the 4 live runs
+attacks/screenshots/         terminal captures of the v1 exploits
+docs/walkthrough.md          one attack chain, start to finish
+docs/build-environment.md    build-environment diagram and limitations
+BUILD_ENV_HARDENING.md       all ten build-environment findings
+infra/gateway/nftables.conf  the gateway firewall rules
 ```
 
-## Standards mapping
+## Setup
 
-**OWASP Top 10 for LLM Applications**
-- Prompt injection (direct / indirect) → A, H
-- Sensitive information disclosure / system-prompt leakage → F, B2
-- Improper output handling / excessive agency → C, D
-- Data and model poisoning → C (memory), H (inbox)
+Requires Python 3.10+.
 
-**OWASP Top 10 for Agentic Applications**
-- ASI01 goal hijack → A, H
-- ASI02 tool misuse → A + B
-- ASI03 identity & privilege abuse → E
-- ASI06 memory & context poisoning → C
+```
+python -m venv .venv
+.venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+copy .env.example .env        # macOS/Linux: cp
+```
 
-Also demonstrated: CWE-209 (error message containing sensitive information), path traversal
-and double-encoding bypasses, redirect-based allow-list bypass, substring-vs-parsed-hostname
-matching, fail-open vs fail-closed design, and least privilege applied as an identity
-boundary rather than a config setting.
+Fill in `ANTHROPIC_API_KEY` and `OWNER_EMAIL` in `.env`. The proof scripts also
+need `OWNER_EMAIL`.
 
-## Known limitations
+```
+python main.py                     # run the agent
+python attacks/run_all_verify.py   # run the proofs
+```
 
-Listed here rather than discovered by a reviewer. Every one of these is a real ceiling on a
-control above.
+## Contact
 
-- **G shrinks blast radius, not context.** The GATHER/ACT split means untrusted content
-  can't reach a send/write tool directly, but it doesn't scrub that content from the model's
-  context. The full version is a dual-LLM design — a tool-less model reads untrusted text
-  and the tool-capable one never sees it. Not built.
-- **D's approval gate is terminal-based.** A blocking `y/n` on stdin: no timeout, no audit
-  log of who approved what, no remote approval channel. Correct for this build, not a
-  production control.
-- **The `<untrusted>` boundary is half structural, half prompt-level.** The markers,
-  neutralization, and sender flag are deterministic. "Don't obey what's inside" depends on
-  the model reading the rule.
-- **The marker-breakout defense has a known gap.** Unicode lookalike brackets (e.g. U+FF1C)
-  are not neutralized — only ASCII and HTML-entity variants of the real marker.
-- **No egress content filter on `send_digest`.** The recipient is pinned; subject and body
-  are not inspected at all. An injection that gets real notes sent to the *legitimate* owner
-  still succeeds.
-- **`append_memory`'s `source` field is a constant, not real provenance.** Through the tool
-  interface it is always `"agent"` — it records that a write happened via the agent, not
-  where the content came from.
-- **Naive checks can misread a defensive echo as compliance** — documented twice, in two
-  different checkers.
-- **The model can narrate a denied action as completed.** Tool descriptions warn against it;
-  it is model behavior, not a code-enforced property.
-- **No `read_tracker` tool exists.** `update_tracker` is append-only with no read path — by
-  design, but a real capability gap.
-- **WITI's runtime has no identity of its own.** The build-environment work protects the
-  *build* identity; the planned third identity for the WITI runtime was never built, so
-  `main.py` runs under whatever account launches it.
-- **The network fence grants a destination, not a purpose.** Allow-listing Anthropic's range
-  also permits every service behind it, including the Files API. The durable fix is a
-  hostname-filtering application-layer proxy; an IP/port firewall physically cannot see which
-  endpoint an encrypted request is for.
-- **The gateway has no input controls yet.** Its own SSH service is reachable from the
-  builder and could be brute-forced. Next control to write.
-- **Design docs describe the original, broader plan.** `AGENT_SYSTEM_PROMPT.md` and
-  `VULN_CATALOG.md` still reference a `search_web` tool and real Gmail sending; neither
-  exists in `main.py`.
-- **More build-environment limits** (shared IPs, server-side tools bypassing the fence, no
-  host firewall on the builder, DNS as an uninspected exfiltration channel) are tracked in
-  [`docs/build-environment.md`](docs/build-environment.md#limitations).
-
-## What's next
-
-Dual-LLM quarantine for untrusted content (the real fix for G's context caveat); an
-application-layer egress proxy that filters on hostname and path rather than IP (the real
-fix for the Files-API caveat); input-chain rules on the gateway; and a third OS identity for
-the WITI runtime, completing the human / builder / runtime separation.
-
-## About
-
-Built by Benjamin Silvert — AI and agent security: designing controls for LLM
-agents and for the environments those agents are built in.
-
-This repo spans both halves of that. The agent side is threat modelling, exploit
-development, and code-level control design against the OWASP LLM and Agentic top-tens. The
-build-environment side is Windows ACLs and identity separation, Hyper-V, virtual
-networking, hand-written nftables egress control, and package-signature verification —
-each layer verified at the enforcement layer rather than accepted from a config file or a
-model's own account of itself.
-
-silvert.ben@gmail.com — happy to walk through any finding above,
-especially the ones where I was wrong.
+Benjamin Silvert, silvert.ben@gmail.com
