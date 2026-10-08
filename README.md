@@ -15,10 +15,10 @@ functionality, there was a lot to break and a lot to fix.
 
 The project has two parts:
 
-- **The agent.** I put eight weaknesses into it on purpose (in its tools, its
+- **Securing the agent.** I put eight weaknesses into it on purpose (in its tools, its
   main loop, and its system prompt), showed that each one was there, and fixed
   them in code. I also found a ninth problem in one of my own fixes.
-- **The build environment.** Building WITI with Claude Code made me realize
+- **Securing the build environment.** Building WITI with Claude Code made me realize
   that the coding agent could also become an adversary, through prompt
   injection, a bug, or a compromised update. So I built and tested two ways to
   contain a coding agent: a separate Windows account with locked files, and a
@@ -28,13 +28,7 @@ The main lesson of the project: security controls for agents need to be
 enforced deterministically, in the harness and the environment around it,
 instead of trusting the model to follow the rules.
 
-I tested the fixes with Python scripts that call the agent's code directly. No
-AI model is involved, so they give the same result every time.
-
-AI wrote nearly all of the code and most of the documentation. I decided what
-to build, ran every attack and test, reviewed the changes, and set up the
-Windows account, the VMs, and the firewall by hand. More detail is in the
-[Who did what](#who-did-what) section below.
+I tested the fixes with Python scripts that call the agent's code directly. 
 
 ---
 
@@ -130,7 +124,7 @@ code has no check. That result doesn't depend on what the model decides.
 - **Before and after:** `git checkout v1-vulnerable-full` and
   `git checkout v2-hardened-full`.
 
-## The build environment
+## Securing the build environment
 
 Claude Code is third-party software that had access to my secrets, read untrusted
 content from the web, and could make network requests. That's the same combination
