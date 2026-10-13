@@ -2,33 +2,20 @@
 
 ## TL;DR
 
-WITI is a learning project I created to gain hands-on experience applying
-security principles to AI agents. I used AI tools to build a small agent,
-attack it, and patch it.
+WITI is a security research project. I built an AI agent with seven tools, planted eight weaknesses in it, attacked each one, and then hardened it.
 
-This project wasn't meant to be a product that solves a business need. It was
-a research experiment to explore the attack surface of basic agent features.
-
-The agent itself is a dummy. It has seven tools, and I only built as much of
-each one as I needed to have something to attack. Even with that little
-functionality, there was a lot to break and a lot to fix.
+The agent's features are deliberately minimal. Each tool does just enough to create a real attack surface, which keeps the focus on how agents can fail and how to secure them. Even with that little functionality, there was a lot to break and a lot to fix.
 
 The project has two parts:
 
-- **Securing the agent.** I put eight weaknesses into it on purpose (in its tools, its
-  main loop, and its system prompt), showed that each one was there, and fixed
-  them in code. I also found a ninth problem in one of my own fixes.
-- **Securing the build environment.** Building WITI with Claude Code made me realize
-  that the coding agent could also become an adversary, through prompt
-  injection, a bug, or a compromised update. So I built and tested two ways to
-  contain a coding agent: a separate Windows account with locked files, and a
-  VM sandbox behind a firewall.
+- **Securing the agent.** The weaknesses sit in its tools, its main loop and its system prompt. The main attack chain turns a hidden instruction on a web page into the leak of private notes, the same attack class as EchoLeak (CVE-2025-32711). I demonstrated each weakness and fixed it in code, then found a ninth problem in one of my own fixes: the refusal message leaked the allow-list it was protecting.
+- **Securing the build environment.** Building WITI with Claude Code made me realize that the coding agent could also become an adversary, through prompt injection, a bug, or a compromised update. So I built and tested two ways to contain a coding agent: a separate Windows account with locked files, and a VM sandbox behind a firewall.
 
-The main lesson of the project: security controls for agents need to be
-enforced deterministically, in the harness and the environment around it,
-instead of trusting the model to follow the rules.
+The main lesson of the project: security controls for agents need to be enforced deterministically, in the harness and the environment around it, where the model can't reach them. A model’s behavior can change from run to run. In WITI, I sent the same harmless prompt three times. The model gave a plain reply the first two times, and on the third it made destructive writes on its own. A control in code gives the same answer every time, so that’s where the rules belong.
 
-I tested the fixes with Python scripts that call the agent's code directly. 
+This held for the coding assistant too: its own permission rules could be sidestepped, so the real limits had to live in the operating system and the network.
+
+Every attack and every fix is checked by automated Python scripts, runnable in one command.
 
 ---
 
@@ -162,13 +149,21 @@ Details: [`BUILD_ENV_HARDENING.md`](BUILD_ENV_HARDENING.md) and
    to the next command that does the same thing. Identity and network controls don't
    care what the command is called.
 2. **A refusal isn't a fix.** The model refused my main attack three times on code with
-   no defenses. The hole was still there.
-3. **Check the control, not what the agent says about it.** Claude Code told me its
+   no defenses. The hole was still there, and a more gullible model would walk
+   straight through it.
+3. **A control the agent can reach is a control it can turn off.** That's why the
+   firewall runs on a separate VM instead of inside the machine it contains.
+4. **The strongest control is a capability the agent never has.** A rule that blocks
+   an action can be routed around. A tool that doesn't exist can't be.
+5. **Plan for blast radius.** Once an agent can run code, you can't list everything it
+   might do. Containment, and cutting outbound traffic above all, makes a bad action
+   not matter.
+6. **Check the control, not what the agent says about it.** Claude Code told me its
    settings blocked it from reading `.env`. I had already removed those rules. It had
    just decided not to.
-4. **A control the agent can reach is a control it can turn off.** That's why the
-   firewall runs on a separate VM instead of inside the machine it contains.
-5. **A passing test only proves what it tests.** The VULN B2 leak sat in a committed
+7. **Find the chokepoint.** One policy check on every tool call broke several attack
+   chains at once, so I fixed the chain rather than each symptom.
+8. **A passing test only proves what it tests.** The VULN B2 leak sat in a committed
    test log that passed every run, because the test checked that a denial happened,
    not what it said.
 
